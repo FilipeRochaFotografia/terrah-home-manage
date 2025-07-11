@@ -1,73 +1,165 @@
-# Welcome to your Lovable project
+# Terrah Homes | Tarefas Programadas
 
-## Project info
+## Progresso recente
 
-**URL**: https://lovable.dev/projects/b8ab6eec-3bf9-416e-a466-483dea1a21ba
+- Integração completa do cadastro de tarefas predefinidas com Supabase.
+- Tabela `tarefas_predefinidas` criada com os campos: id (string), titulo, descricao, periodicidade, observacao.
+- Modelos de tarefas cadastrados e buscados dinamicamente no frontend.
+- Formulário de nova tarefa exibe apenas periodicidade, evitando duplicidade de informações.
+- Interfaces TypeScript ajustadas para refletir o banco.
+- Todos os erros de tipagem e fetch resolvidos.
+- Modal de nova tarefa com UX aprimorada.
 
-## How can I edit this code?
+## Próximos passos
 
-There are several ways of editing your application.
+- Implementar upload de fotos por tarefa.
+- Filtros e busca de tarefas.
+- Notificações push.
+- Relatórios e painel do gestor.
+- Sincronização offline.
+- Integração com Google Calendar.
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/b8ab6eec-3bf9-416e-a466-483dea1a21ba) and start prompting.
+## Configuração do Supabase
 
-Changes made via Lovable will be committed automatically to this repo.
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+VITE_SUPABASE_ANON_KEY=CHAVE_ANON_SUPABASE
 ```
 
-**Edit a file directly in GitHub**
+Substitua pelos valores do seu projeto no painel do Supabase.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Visão Geral
+O aplicativo Terrah Homes Tarefas Programadas é uma solução digital para gestão, automação e acompanhamento de tarefas recorrentes e programadas de manutenção, limpeza e operação de imóveis. Foco em automação, controle de execução, anexos de fotos, notificações e relatórios para o gestor.
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Principais Funcionalidades
+- Login por e-mail e senha (admin e funcionários)
+- Cadastro e gestão de imóveis (apenas admin)
+- Criação automática e manual de tarefas programadas
+- Status de tarefas: Em aberto, Concluída, Pausada
+- Conclusão exige upload de até 5 fotos
+- Notificações push para todos os usuários
+- Relatórios mensais para o gestor (painel web)
+- Sincronização offline (leitura/atualização de status)
+- Integração com Google Calendar
+- Interface responsiva, mobile-first, com branding Terrah Homes
 
-## What technologies are used for this project?
+---
 
-This project is built with:
+## Stack Sugerida
+- **Frontend:** React + Vite (PWA), TailwindCSS, Shadcn/ui ou Material UI
+- **Backend:** Firebase (Auth, Firestore, Storage, Messaging) ou Supabase
+- **Push Notifications:** Firebase Cloud Messaging (FCM) ou alternativa Supabase
+- **Offline:** IndexedDB/localStorage + sincronização automática
+- **Relatórios:** Firestore queries + exportação CSV/PDF
+- **Integração:** Google Calendar API
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## Estrutura de Pastas (sugerida)
+```
+terrah-homes/
+├── public/                # Assets estáticos (logo, ícones)
+├── src/
+│   ├── components/        # Componentes React reutilizáveis
+│   ├── pages/             # Páginas principais
+│   ├── hooks/             # Custom hooks
+│   ├── lib/               # Utilitários, helpers
+│   ├── contexts/          # Estado global
+│   ├── styles/            # Estilos globais
+│   └── ...
+├── README_TERAHHOMES.md
+├── PRD_TERAH_HOMES.md
+├── package.json
+└── ...
+```
 
-Simply open [Lovable](https://lovable.dev/projects/b8ab6eec-3bf9-416e-a466-483dea1a21ba) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## Como Executar
+```bash
+# Instalar dependências
+npm install
 
-Yes, you can!
+# Executar em desenvolvimento
+npm run dev
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+# Build para produção
+npm run build
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+# Preview da build
+npm run preview
+```
+
+**Projeto rodando em:** http://localhost:8080/
+
+---
+
+## Branding
+- **Logo:** ![Logo Terrah Homes](./public/logo-terrahhomes.png)
+- **Cores:** Azul turquesa e laranja
+- **UI:** Clean, simples, fácil de usar
+
+---
+
+## Contato
+- Dúvidas, sugestões ou suporte: [Seu e-mail ou canal de contato]
+
+---
+
+**Este README será atualizado conforme o projeto evolui.**
+
+---
+
+## 1. **Erro: `Property 'tipo_manutencao' does not exist on type 'TarefaPredefinida'`**
+
+Seu código ainda está tentando acessar ou exibir o campo `tipo_manutencao` em algum lugar do componente (provavelmente ao renderizar a tarefa selecionada).
+
+**Como corrigir:**
+- **Remova** qualquer referência a `tipo_manutencao` no seu componente `TaskList.tsx` (e em qualquer outro lugar).
+- Exemplo:  
+  ```tsx
+  {/* Remova ou comente esta linha se existir */}
+  <span>{selectedTarefaPredefinida?.tipo_manutencao}</span>
+  ```
+- Se quiser mostrar algo, use apenas os campos que existem: `titulo`, `descricao`, `periodicidade`, `observacao`.
+
+---
+
+## 2. **Erro: `Property 'nome' does not exist on type ...`**
+
+No seu `PropertyList.tsx`, você está usando um mock de propriedades com o campo `name`, mas a interface espera `nome`.
+
+**Como corrigir:**
+- Troque o campo `name` para `nome` no seu array `mockProperties`:
+  ```js
+  const mockProperties = [
+    {
+      id: "1",
+      nome: "Prédio A - Residencial", // <-- troque name por nome
+      ...
+    },
+    ...
+  ];
+  ```
+
+---
+
+## 3. **As tarefas ainda não aparecem**
+
+Esses erros de tipagem podem impedir o React de renderizar corretamente o componente.  
+**Assim que corrigir os dois pontos acima, o dropdown de tarefas predefinidas deve funcionar normalmente!**
+
+---
+
+### **Resumo do que fazer:**
+1. Remova todas as referências a `tipo_manutencao` do frontend.
+2. Troque `name` por `nome` no mock de propriedades.
+3. Salve e recarregue o frontend.
+
+Se ainda não aparecer, me envie o trecho do JSX onde renderiza as informações da tarefa predefinida, que eu te mostro exatamente o que ajustar!

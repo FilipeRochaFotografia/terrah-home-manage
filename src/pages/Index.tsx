@@ -3,6 +3,7 @@ import { Header } from "@/components/Header";
 import { Dashboard } from "@/components/Dashboard";
 import { TaskList } from "@/components/TaskList";
 import { PropertyList } from "@/components/PropertyList";
+import { FuncionariosList } from "@/components/FuncionariosList";
 import { BottomNav } from "@/components/BottomNav";
 
 const Index = () => {
@@ -16,6 +17,8 @@ const Index = () => {
         return <TaskList />;
       case "properties":
         return <PropertyList />;
+      case "employees":
+        return <FuncionariosList />;
       case "reports":
         return (
           <div className="text-center py-12">
