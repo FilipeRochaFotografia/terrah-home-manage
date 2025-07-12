@@ -31,3 +31,15 @@
 
 ## Revisão
 - Este documento deve ser atualizado a cada nova decisão relevante 
+
+---
+
+## Atualização 12/07 – Decisões e Direcionamento
+- Priorização de melhorias em UX/UI nas áreas de propriedades e funcionários
+- Implementação de filtros avançados (por imóvel/propriedade)
+- Finalização do upload de fotos por tarefa
+- Integração de notificações push reais
+- Desenvolvimento de painel de relatórios/exportação
+- Suporte a sincronização offline
+- Foco em acessibilidade, onboarding e histórico de alterações
+Essas decisões reforçam o compromisso com usabilidade, escalabilidade e experiência mobile-first. 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Dashboard } from "@/components/Dashboard";
 import { TaskList } from "@/components/TaskList";
@@ -8,6 +8,28 @@ import { BottomNav } from "@/components/BottomNav";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  useEffect(() => {
+    // Listener para navegação entre abas
+    const handleNavigateToTab = (event: CustomEvent) => {
+      setActiveTab(event.detail);
+    };
+
+    // Listener para abrir modal de nova tarefa
+    const handleOpenNewTaskModal = () => {
+      // Disparar evento para o TaskList abrir o modal
+      const openModalEvent = new CustomEvent('openTaskModal');
+      window.dispatchEvent(openModalEvent);
+    };
+
+    window.addEventListener('navigateToTab', handleNavigateToTab as EventListener);
+    window.addEventListener('openNewTaskModal', handleOpenNewTaskModal);
+
+    return () => {
+      window.removeEventListener('navigateToTab', handleNavigateToTab as EventListener);
+      window.removeEventListener('openNewTaskModal', handleOpenNewTaskModal);
+    };
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -19,20 +41,6 @@ const Index = () => {
         return <PropertyList />;
       case "employees":
         return <FuncionariosList />;
-      case "reports":
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-xl font-semibold mb-2">Relatórios</h2>
-            <p className="text-muted-foreground">Em desenvolvimento...</p>
-          </div>
-        );
-      case "settings":
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-xl font-semibold mb-2">Configurações</h2>
-            <p className="text-muted-foreground">Em desenvolvimento...</p>
-          </div>
-        );
       default:
         return <Dashboard />;
     }

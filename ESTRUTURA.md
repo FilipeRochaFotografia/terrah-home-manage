@@ -37,3 +37,8 @@ terrah-homes/
 ## Observações
 - Estrutura modular para facilitar manutenção e escalabilidade
 - Pronta para expansão futura (multiempresa, novos tipos de tarefas) 
+
+---
+
+## Atualização 12/07 – Estrutura e Evolução
+A estrutura modular do projeto segue adequada para manutenção e expansão. As próximas melhorias focam em UX/UI, filtros avançados, upload de fotos, notificações push, painel de relatórios, sincronização offline e onboarding, garantindo escalabilidade e experiência mobile-first. 

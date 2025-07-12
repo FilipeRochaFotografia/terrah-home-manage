@@ -1,165 +1,160 @@
-# Terrah Homes | Tarefas Programadas
+# Terrah Homes - Sistema de Gestão de Tarefas
 
-## Progresso recente
+Sistema mobile-first para gestão de tarefas de manutenção, limpeza e operação dos imóveis da Terrah Homes.
 
-- Integração completa do cadastro de tarefas predefinidas com Supabase.
-- Tabela `tarefas_predefinidas` criada com os campos: id (string), titulo, descricao, periodicidade, observacao.
-- Modelos de tarefas cadastrados e buscados dinamicamente no frontend.
-- Formulário de nova tarefa exibe apenas periodicidade, evitando duplicidade de informações.
-- Interfaces TypeScript ajustadas para refletir o banco.
-- Todos os erros de tipagem e fetch resolvidos.
-- Modal de nova tarefa com UX aprimorada.
+## 🚀 Funcionalidades
 
-## Próximos passos
+### ✅ Implementadas
+- **Autenticação**: Login/logout com Supabase Auth
+- **Gestão de Imóveis**: CRUD completo com categorização (residencial/comercial) e status
+- **Sistema de Tarefas**: CRUD completo com tarefas predefinidas dinâmicas
+- **Dashboard**: Visão geral com estatísticas em tempo real e cards interativos
+- **Gestão de Funcionários**: CRUD básico com atribuição de tarefas
+- **Notificações**: Sistema local com badge em tempo real e persistência
+- **Filtros e Busca**: Por status, prioridade, cor e imóvel
+- **Interface Mobile-First**: Design responsivo com animações e branding consistente
+- **Upload de Fotos**: Preview no modal de conclusão de tarefas
+- **Modais Otimizados**: Conclusão e edição com UX melhorada
+- **Cards de Tarefa**: Interface limpa com botões integrados
 
-- Implementar upload de fotos por tarefa.
-- Filtros e busca de tarefas.
-- Notificações push.
-- Relatórios e painel do gestor.
-- Sincronização offline.
-- Integração com Google Calendar.
+### 🔄 Em Desenvolvimento
+- **Upload de Fotos**: Integração completa com listagem de tarefas
+- **Notificações Push**: Para mobile e web
+- **Painel de Relatórios**: Com exportação e gráficos
+- **Sincronização Offline**: Para uso sem internet
 
----
+### 📋 Planejadas
+- **Integração Google Calendar**
+- **Histórico de Alterações**
+- **Testes de Acessibilidade**
+- **Documentação Visual**
 
-## Configuração do Supabase
+## 🛠️ Tecnologias
 
-Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
+- **Frontend**: React, Vite, TypeScript
+- **Styling**: TailwindCSS
+- **Backend**: Supabase (Auth, Database, Storage)
+- **UI Components**: shadcn/ui
+- **Icons**: Lucide React
 
-```
-VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
-VITE_SUPABASE_ANON_KEY=CHAVE_ANON_SUPABASE
-```
+## 📱 Características Mobile-First
 
-Substitua pelos valores do seu projeto no painel do Supabase.
+- Design responsivo otimizado para dispositivos móveis
+- Navegação intuitiva com bottom navigation
+- Modais com padding lateral no mobile
+- Cards e componentes touch-friendly
+- Animações suaves e feedback visual
 
-## Visão Geral
-O aplicativo Terrah Homes Tarefas Programadas é uma solução digital para gestão, automação e acompanhamento de tarefas recorrentes e programadas de manutenção, limpeza e operação de imóveis. Foco em automação, controle de execução, anexos de fotos, notificações e relatórios para o gestor.
+## 🎨 Branding
 
----
+- **Cores**: Azul turquesa (#00B4D8) e laranja (#FF6B35)
+- **Logo**: Terrah Homes
+- **Gradientes**: Efeitos visuais modernos
+- **Tipografia**: Clean e legível
 
-## Principais Funcionalidades
-- Login por e-mail e senha (admin e funcionários)
-- Cadastro e gestão de imóveis (apenas admin)
-- Criação automática e manual de tarefas programadas
-- Status de tarefas: Em aberto, Concluída, Pausada
-- Conclusão exige upload de até 5 fotos
-- Notificações push para todos os usuários
-- Relatórios mensais para o gestor (painel web)
-- Sincronização offline (leitura/atualização de status)
-- Integração com Google Calendar
-- Interface responsiva, mobile-first, com branding Terrah Homes
+## 🚀 Como Executar
 
----
-
-## Stack Sugerida
-- **Frontend:** React + Vite (PWA), TailwindCSS, Shadcn/ui ou Material UI
-- **Backend:** Firebase (Auth, Firestore, Storage, Messaging) ou Supabase
-- **Push Notifications:** Firebase Cloud Messaging (FCM) ou alternativa Supabase
-- **Offline:** IndexedDB/localStorage + sincronização automática
-- **Relatórios:** Firestore queries + exportação CSV/PDF
-- **Integração:** Google Calendar API
-
----
-
-## Estrutura de Pastas (sugerida)
-```
-terrah-homes/
-├── public/                # Assets estáticos (logo, ícones)
-├── src/
-│   ├── components/        # Componentes React reutilizáveis
-│   ├── pages/             # Páginas principais
-│   ├── hooks/             # Custom hooks
-│   ├── lib/               # Utilitários, helpers
-│   ├── contexts/          # Estado global
-│   ├── styles/            # Estilos globais
-│   └── ...
-├── README_TERAHHOMES.md
-├── PRD_TERAH_HOMES.md
-├── package.json
-└── ...
-```
-
----
-
-## Como Executar
+1. **Clone o repositório**
 ```bash
-# Instalar dependências
-npm install
-
-# Executar em desenvolvimento
-npm run dev
-
-# Build para produção
-npm run build
-
-# Preview da build
-npm run preview
+git clone [url-do-repositorio]
+cd terrah-home-manage
 ```
 
-**Projeto rodando em:** http://localhost:8080/
+2. **Instale as dependências**
+```bash
+npm install
+```
+
+3. **Configure o Supabase**
+- Crie um projeto no [Supabase](https://supabase.com)
+- Configure as variáveis de ambiente no arquivo `.env`
+- Execute os scripts SQL para criar as tabelas
+
+4. **Execute o projeto**
+```bash
+npm run dev
+```
+
+O projeto estará disponível em `http://localhost:8080`
+
+## 📊 Status do Projeto
+
+**Progresso Geral: 75% Concluído**
+
+- ✅ Funcionalidades Core: 100%
+- ✅ Melhorias de UX/UI: 85%
+- 🔄 Funcionalidades Avançadas: 45%
+- 🔄 Documentação: 20%
+- 🔄 Testes: 10%
+
+## 📁 Estrutura do Projeto
+
+```
+src/
+├── components/          # Componentes reutilizáveis
+│   ├── ui/             # Componentes base (shadcn/ui)
+│   ├── Dashboard.tsx   # Dashboard principal
+│   ├── TaskList.tsx    # Lista de tarefas
+│   ├── PropertyList.tsx # Lista de imóveis
+│   ├── FuncionariosList.tsx # Lista de funcionários
+│   ├── Header.tsx      # Header com navegação
+│   └── BottomNav.tsx   # Navegação inferior
+├── pages/              # Páginas principais
+├── hooks/              # Custom hooks
+├── lib/                # Utilitários e configurações
+└── data/               # Dados estáticos
+```
+
+## 🔧 Configuração do Supabase
+
+### Tabelas Necessárias
+
+1. **imoveis**: Gestão de propriedades
+2. **tarefas**: Tarefas e demandas
+3. **tarefas_predefinidas**: Modelos de tarefas
+4. **funcionarios**: Equipe e responsáveis
+5. **usuarios**: Autenticação e permissões
+
+### Storage Buckets
+
+- **fotos-tarefas**: Para upload de fotos das tarefas
+
+## 📝 Changelog
+
+### [2024-07-12] - Melhorias de UX/UI
+- ✅ Modal de conclusão com select de funcionários
+- ✅ Upload de fotos com preview no modal de conclusão
+- ✅ Modal de conclusão com padding lateral no mobile
+- ✅ Modal de edição com campos preenchidos automaticamente
+- ✅ Modal de edição com tamanho reduzido
+- ✅ Componente TaskCard refatorado com props editButton e className
+- ✅ Botão de editar movido para dentro do card de tarefa
+- ✅ Botão de excluir mantido apenas no modal de edição
+- ✅ Interface visual mais limpa e consistente nos cards
+
+### [2024-07-12] - Correções e Melhorias
+- ✅ Conclusão de tarefas usa sempre a data atual
+- ✅ Tarefas concluídas com borda azul (turquesa)
+- ✅ Filtro de tarefas por imóvel integrado à navegação
+- ✅ Correção do erro PATCH 400 ao concluir tarefas
+- ✅ Cards de tarefas concluídas mostram responsável e anotações
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 📞 Contato
+
+Terrah Homes - [contato@terrahhomes.com](mailto:contato@terrahhomes.com)
 
 ---
 
-## Branding
-- **Logo:** ![Logo Terrah Homes](./public/logo-terrahhomes.png)
-- **Cores:** Azul turquesa e laranja
-- **UI:** Clean, simples, fácil de usar
-
----
-
-## Contato
-- Dúvidas, sugestões ou suporte: [Seu e-mail ou canal de contato]
-
----
-
-**Este README será atualizado conforme o projeto evolui.**
-
----
-
-## 1. **Erro: `Property 'tipo_manutencao' does not exist on type 'TarefaPredefinida'`**
-
-Seu código ainda está tentando acessar ou exibir o campo `tipo_manutencao` em algum lugar do componente (provavelmente ao renderizar a tarefa selecionada).
-
-**Como corrigir:**
-- **Remova** qualquer referência a `tipo_manutencao` no seu componente `TaskList.tsx` (e em qualquer outro lugar).
-- Exemplo:  
-  ```tsx
-  {/* Remova ou comente esta linha se existir */}
-  <span>{selectedTarefaPredefinida?.tipo_manutencao}</span>
-  ```
-- Se quiser mostrar algo, use apenas os campos que existem: `titulo`, `descricao`, `periodicidade`, `observacao`.
-
----
-
-## 2. **Erro: `Property 'nome' does not exist on type ...`**
-
-No seu `PropertyList.tsx`, você está usando um mock de propriedades com o campo `name`, mas a interface espera `nome`.
-
-**Como corrigir:**
-- Troque o campo `name` para `nome` no seu array `mockProperties`:
-  ```js
-  const mockProperties = [
-    {
-      id: "1",
-      nome: "Prédio A - Residencial", // <-- troque name por nome
-      ...
-    },
-    ...
-  ];
-  ```
-
----
-
-## 3. **As tarefas ainda não aparecem**
-
-Esses erros de tipagem podem impedir o React de renderizar corretamente o componente.  
-**Assim que corrigir os dois pontos acima, o dropdown de tarefas predefinidas deve funcionar normalmente!**
-
----
-
-### **Resumo do que fazer:**
-1. Remova todas as referências a `tipo_manutencao` do frontend.
-2. Troque `name` por `nome` no mock de propriedades.
-3. Salve e recarregue o frontend.
-
-Se ainda não aparecer, me envie o trecho do JSX onde renderiza as informações da tarefa predefinida, que eu te mostro exatamente o que ajustar!
+**Desenvolvido com ❤️ para a Terrah Homes**

@@ -17,3 +17,8 @@ O projeto surgiu da necessidade de automatizar e controlar tarefas recorrentes e
 ## Futuro
 - Estrutura pronta para multiempresa
 - Possibilidade de expansão para outros tipos de tarefas e integrações 
+
+---
+
+## Atualização 12/07 – Alinhamento Estratégico
+O projeto segue alinhado ao objetivo de automação, transparência e escalabilidade, com foco mobile-first e estrutura pronta para expansão. As próximas etapas priorizam melhorias de UX/UI, filtros avançados, upload de fotos, notificações push, relatórios, sincronização offline e onboarding, conforme análise consolidada do status atual. 

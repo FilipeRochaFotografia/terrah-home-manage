@@ -1,6 +1,7 @@
 import { Calendar, Camera, Clock, MapPin, User2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 interface TaskCardProps {
   id: string;
@@ -12,9 +13,16 @@ interface TaskCardProps {
   property?: string;
   assignee: string;
   photosCount: number;
-  maintenanceType: string;
   responsavel?: string;
   anotacoes?: string;
+  diasRestantes?: number;
+  statusCor?: string;
+  statusLabel?: string;
+  onStart?: () => void;
+  createdAt?: string;
+  completedAt?: string;
+  editButton?: React.ReactNode;
+  className?: string;
 }
 
 const statusConfig = {
@@ -54,7 +62,6 @@ function mapPriority(priority: string): "low" | "medium" | "high" {
     case "baixa":
     case "low":
       return "low";
-    case "media":
     case "média":
     case "medium":
       return "medium";
@@ -75,19 +82,43 @@ export function TaskCard({
   property, 
   assignee, 
   photosCount,
-  maintenanceType,
   responsavel,
-  anotacoes
+  anotacoes,
+  diasRestantes,
+  statusCor,
+  statusLabel,
+  onStart,
+  createdAt,
+  completedAt,
+  editButton,
+  className
 }: TaskCardProps) {
   const mappedStatus = mapStatus(status);
   const mappedPriority = mapPriority(priority);
-  const isOverdue = new Date(dueDate) < new Date() && mappedStatus !== "completed";
   
   const statusValue = statusConfig[mappedStatus] || statusConfig["pending"];
   const priorityValue = priorityConfig[mappedPriority] || priorityConfig["medium"];
 
+  // Função para determinar a cor da borda baseada no tempo restante
+  function getBorderColor(diasRestantes?: number): string {
+    if (diasRestantes === undefined) return "border-l-terrah-turquoise/20";
+    if (diasRestantes <= 5) return "border-l-red-600";
+    if (diasRestantes <= 14) return "border-l-orange-500/60";
+    if (diasRestantes <= 29) return "border-l-yellow-500/60";
+    return "border-l-green-500/60";
+  }
+
+  const borderColor = getBorderColor(diasRestantes);
+
+  // Se estiver atrasada, aplica fundo vermelho claro
+  const isOverdue = new Date(dueDate) < new Date() && mappedStatus !== "completed";
+  const overdueBg = isOverdue ? "bg-red-500/5" : "";
+
+  const isCompleted = mappedStatus === "completed";
+  const completedBg = isCompleted ? "bg-blue-500/5" : "";
+
   return (
-    <Card className="group hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] border-l-4 border-l-terrah-turquoise/20 hover:border-l-terrah-turquoise">
+    <Card className={`group hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] border-l-4 ${borderColor} hover:${borderColor.replace('/60', '/80')} ${overdueBg} ${completedBg} ${className || ''}`}>
       <CardContent className="p-6">
         {/* Header com título e badges */}
         <div className="flex items-start justify-between mb-4">
@@ -103,9 +134,14 @@ export function TaskCard({
             <div className={`${statusValue.color} border font-medium inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold`}>
               {statusValue.label}
             </div>
-            <div className={`${priorityValue.color} font-medium inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold`}>
-              {mappedPriority === "high" ? "Alta" : mappedPriority === "medium" ? "Média" : "Baixa"}
-            </div>
+            {diasRestantes !== undefined && statusLabel && !isCompleted && (
+              <Badge 
+                variant="outline" 
+                className={`${statusCor} border font-medium text-xs font-semibold`}
+              >
+                {statusLabel} ({diasRestantes} dia{diasRestantes !== 1 ? 's' : ''})
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -114,21 +150,25 @@ export function TaskCard({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              <span className={isOverdue ? "text-destructive font-semibold" : ""}>
-                {new Date(dueDate).toLocaleDateString("pt-BR")}
-              </span>
-              {isOverdue && (
-                <div className="bg-destructive text-destructive-foreground inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold">
-                  Atrasada
-                </div>
-              )}
+              <span>{new Date(dueDate).toLocaleDateString("pt-BR")}</span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span className="font-medium">{maintenanceType}</span>
+              <span className="font-medium">Manutenção</span>
             </div>
+            {createdAt && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span className="font-medium">Criada: {new Date(createdAt).toLocaleDateString("pt-BR")}</span>
+              </div>
+            )}
+            {completedAt && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span className="font-medium">Concluída: {new Date(completedAt).toLocaleDateString("pt-BR")}</span>
+              </div>
+            )}
           </div>
-          
           <div className="space-y-2">
             {property && (
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -149,15 +189,25 @@ export function TaskCard({
             <Camera className="h-4 w-4" />
             <span className="font-medium">{photosCount} fotos</span>
           </div>
-          
           <div className="flex items-center gap-2">
             {mappedStatus === "pending" && (
               <Button 
                 variant="turquoise" 
                 size="sm"
                 className="bg-gradient-to-r from-terrah-turquoise to-terrah-turquoise/90 hover:from-terrah-turquoise/90 hover:to-terrah-turquoise shadow-sm hover:shadow-md transition-all duration-200"
+                onClick={onStart}
               >
                 Iniciar
+              </Button>
+            )}
+            {isCompleted && (
+              <Button 
+                variant="orange" 
+                size="sm"
+                className="bg-orange-500/80 text-white cursor-default" 
+                disabled
+              >
+                Concluída
               </Button>
             )}
             {mappedStatus === "in-progress" && (
@@ -176,6 +226,7 @@ export function TaskCard({
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
+            {editButton}
           </div>
         </div>
       </CardContent>
