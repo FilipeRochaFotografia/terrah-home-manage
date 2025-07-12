@@ -17,6 +17,7 @@ export function Header() {
   const [selectedFuncionario, setSelectedFuncionario] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [exportType, setExportType] = useState<string>("");
+  const [userInfo, setUserInfo] = useState<{nome: string, email: string, isAdmin: boolean} | null>(null);
 
   // State para notificações lidas por sessão
   const [notificacoesLidas, setNotificacoesLidas] = useState(() => {
@@ -83,6 +84,26 @@ export function Header() {
       });
     }
   }, [showTeamModal]);
+
+  useEffect(() => {
+    async function fetchUserInfo() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Buscar dados extras na tabela funcionarios
+        const { data: funcionarios } = await supabase
+          .from('funcionarios')
+          .select('nome, email, is_admin')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        setUserInfo({
+          nome: funcionarios?.nome || user.user_metadata?.name || 'Usuário',
+          email: funcionarios?.email || user.email,
+          isAdmin: !!funcionarios?.is_admin
+        });
+      }
+    }
+    fetchUserInfo();
+  }, []);
 
   // Função de logout
   async function handleLogout() {
@@ -171,9 +192,21 @@ export function Header() {
                     onClick={() => setShowProfileMenu(false)}
                   />
                   <div className="fixed top-16 right-4 w-56 bg-white border rounded-lg shadow-lg z-[100] animate-in fade-in duration-200">
+                    {/* Topo com dados do usuário */}
+                    {userInfo && (
+                      <div className="px-4 py-2 border-b">
+                        <div className="font-bold">{userInfo.nome}</div>
+                        <div className="text-xs text-muted-foreground">{userInfo.email}</div>
+                        {userInfo.isAdmin && (
+                          <div className="mt-1">
+                            <span className="text-xs bg-terrah-turquoise/20 text-terrah-turquoise rounded px-2 py-0.5">Admin</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button className="w-full text-left px-4 py-2 hover:bg-terrah-turquoise/10" onClick={() => { setShowTeamModal(true); setShowProfileMenu(false); }}>Gerenciar equipes e permissões</button>
                     <button className="w-full text-left px-4 py-2 hover:bg-terrah-turquoise/10" onClick={() => { setShowExportModal(true); setShowProfileMenu(false); }}>Exportar relatórios</button>
-                    <button className="w-full text-left px-4 py-2 hover:bg-terrah-orange/10 text-destructive" onClick={handleLogout}>Sair</button>
+                    <button className="w-full text-left px-4 py-2 text-destructive hover:bg-destructive/10" onClick={handleLogout}>Sair</button>
                   </div>
                 </>
               )}

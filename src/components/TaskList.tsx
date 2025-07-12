@@ -7,6 +7,8 @@ import { Plus, Edit, Trash2, Calendar, User2, FileText, Filter, Search, RefreshC
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { v4 as uuidv4 } from 'uuid';
+import { useRef } from 'react';
 
 interface TarefaPredefinida {
   id: string;
@@ -39,6 +41,7 @@ interface Tarefa {
   tarefa_predefinida_id?: string;
   aguardando_aprovacao_exclusao?: boolean;
   created_at?: string;
+  fotos?: string[] | null; // Adicionado para armazenar URLs das fotos
 }
 
 export function TaskList() {
@@ -67,6 +70,9 @@ export function TaskList() {
   const [conclusaoAnotacoes, setConclusaoAnotacoes] = useState("");
   const [conclusaoFotos, setConclusaoFotos] = useState<File[]>([]);
   const [propertyFilter, setPropertyFilter] = useState<{imovelId: string, status: string} | null>(null);
+  const [editFotos, setEditFotos] = useState<string[]>([]); // URLs das fotos já anexadas
+  const [editNovasFotos, setEditNovasFotos] = useState<File[]>([]); // Novos arquivos a anexar
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
@@ -146,7 +152,7 @@ export function TaskList() {
 
   async function fetchTarefas() {
     setLoading(true);
-    const { data, error } = await supabase.from("tarefas").select("id, titulo, descricao, status, data_criacao, data_vencimento, imovel_id, anotacoes, responsavel_id, tarefa_predefinida_id, aguardando_aprovacao_exclusao, created_at, data_conclusao").order("data_vencimento", { ascending: false });
+    const { data, error } = await supabase.from("tarefas").select("id, titulo, descricao, status, data_criacao, data_vencimento, imovel_id, anotacoes, responsavel_id, tarefa_predefinida_id, aguardando_aprovacao_exclusao, created_at, data_conclusao, fotos").order("data_vencimento", { ascending: false });
     if (!error && data) setTarefas(data);
     setLoading(false);
   }
@@ -175,6 +181,7 @@ export function TaskList() {
   }
 
   function openForm(tarefa?: Tarefa) {
+    setSaving(false); // Garante que o botão Salvar não fique travado ao abrir o modal
     setEditTarefa(tarefa || null);
     // Preencher campos do formulário com os dados da tarefa selecionada
     if (tarefa) {
@@ -184,12 +191,16 @@ export function TaskList() {
       setAnotacoes(tarefa.anotacoes || "");
       setImovelId(tarefa.imovel_id || "");
       setResponsavelId(tarefa.responsavel_id || "");
+      setEditFotos(tarefa.fotos ?? []);
+      setEditNovasFotos([]);
     } else {
       setSelectedTarefaPredefinida(null);
       setAgendamentoData("");
       setAnotacoes("");
       setImovelId("");
       setResponsavelId("");
+      setEditFotos([]);
+      setEditNovasFotos([]);
     }
     setShowForm(true);
   }
@@ -220,6 +231,21 @@ export function TaskList() {
     }
 
     setSaving(true);
+    let fotosUrls = [...editFotos];
+    if (editNovasFotos.length > 0) {
+      for (const file of editNovasFotos) {
+        const ext = file.name.split('.').pop();
+        const filePath = `${editTarefa.id}/${uuidv4()}.${ext}`;
+        const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
+        if (error) {
+          console.error('Erro ao fazer upload:', error);
+          alert('Erro ao fazer upload: ' + JSON.stringify(error));
+        } else {
+          const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
+          if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+        }
+      }
+    }
     const tarefaData = {
       titulo: selectedTarefaPredefinida.titulo,
       descricao: selectedTarefaPredefinida.descricao,
@@ -229,16 +255,54 @@ export function TaskList() {
       anotacoes: anotacoes || null,
       tarefa_predefinida_id: selectedTarefaPredefinida.id,
       status: editTarefa?.status || "em_aberto",
-      data_criacao: new Date().toISOString().slice(0, 10)
+      data_criacao: new Date().toISOString().slice(0, 10),
+      fotos: fotosUrls // sempre array, mesmo vazio
     };
     
     if (editTarefa) {
       await supabase.from("tarefas").update(tarefaData).eq("id", editTarefa.id);
     } else {
-      const { error } = await supabase.from("tarefas").insert(tarefaData);
-      if (error) {
-        console.error("Erro ao inserir tarefa:", tarefaData, error);
-        alert("Erro ao cadastrar tarefa: " + error.message);
+      // 1. Cria a tarefa sem fotos
+      const { data: insertData, error: insertError } = await supabase.from("tarefas").insert({
+        titulo: selectedTarefaPredefinida.titulo,
+        descricao: selectedTarefaPredefinida.descricao,
+        data_vencimento: agendamentoData,
+        imovel_id: imovelId,
+        responsavel_id: responsavelId || null,
+        anotacoes: anotacoes || null,
+        tarefa_predefinida_id: selectedTarefaPredefinida.id,
+        status: "em_aberto",
+        data_criacao: new Date().toISOString().slice(0, 10),
+        fotos: []
+      }).select().single();
+      if (insertError) {
+        console.error("Erro ao inserir tarefa:", insertError);
+        alert("Erro ao cadastrar tarefa: " + insertError.message);
+        setSaving(false);
+        return;
+      }
+      const newId = insertData?.id;
+      if (!newId) {
+        alert("Erro ao cadastrar tarefa: ID não retornado pelo Supabase.");
+        setSaving(false);
+        return;
+      }
+      let fotosUrls: string[] = [];
+      if (editNovasFotos.length > 0 && newId) {
+        for (const file of editNovasFotos) {
+          const ext = file.name.split('.').pop();
+          const filePath = `${newId}/${uuidv4()}.${ext}`;
+          const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
+          if (error) {
+            console.error('Erro ao fazer upload:', error);
+            alert('Erro ao fazer upload: ' + JSON.stringify(error));
+          } else {
+            const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
+            if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+          }
+        }
+        // 4. Atualiza a tarefa com as URLs das fotos
+        await supabase.from("tarefas").update({ fotos: fotosUrls }).eq("id", newId);
       }
     }
     setSaving(false);
@@ -312,17 +376,29 @@ export function TaskList() {
   async function handleStartSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!startTarefa) return;
-    // Data de conclusão = hoje
     const dataConclusaoValida = getTodayDate();
     const responsavelValido = conclusaoResponsavel && conclusaoResponsavel.trim() !== '' ? conclusaoResponsavel : null;
-    // Fotos e anotações (simples, pois fotos ainda não implementado)
-    // Se fotos for array vazio, enviar null
-    // Se anotacoes for string vazia, enviar null
+    let fotosUrls: string[] = [];
+    if (conclusaoFotos.length > 0) {
+      for (const file of conclusaoFotos) {
+        const ext = file.name.split('.').pop();
+        const filePath = `${startTarefa.id}/${uuidv4()}.${ext}`;
+        const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
+        if (error) {
+          console.error('Erro ao fazer upload:', error);
+          alert('Erro ao fazer upload: ' + JSON.stringify(error));
+        } else {
+          const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
+          if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+        }
+      }
+    }
     await supabase.from("tarefas").update({
       status: "concluida",
       data_conclusao: dataConclusaoValida,
       responsavel_id: responsavelValido,
-      anotacoes: conclusaoAnotacoes || null
+      anotacoes: conclusaoAnotacoes || null,
+      fotos: fotosUrls // sempre array, mesmo vazio
     }).eq("id", startTarefa.id);
     await fetchTarefas();
     closeStartModal();
@@ -543,7 +619,7 @@ export function TaskList() {
               dueDate={tarefa.data_vencimento}
               property={imoveis.find(i => i.id === tarefa.imovel_id)?.nome || ""}
               assignee={"-"}
-              photosCount={0}
+              photosCount={tarefa.fotos?.length || 0}
               responsavel={funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome}
               anotacoes={tarefa.anotacoes}
               diasRestantes={diasRestantes}
@@ -558,6 +634,7 @@ export function TaskList() {
                   <Edit className="h-5 w-5" />
                 </Button>
               )}
+              photos={tarefa.fotos ?? []}
             />
             );
           })}
@@ -670,6 +747,45 @@ export function TaskList() {
                 </select>
               </div>
             )}
+
+            {/* Galeria de fotos já anexadas */}
+            {editFotos.length > 0 && (
+              <div className="flex gap-2 flex-wrap mb-2">
+                {editFotos.map((url, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={url} alt={`Foto ${idx+1}`} className="w-16 h-16 object-cover rounded border" />
+                    <button type="button" onClick={() => setEditFotos(editFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Upload de novas fotos */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Adicionar Fotos (até {5 - editFotos.length} novas)
+              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={editFotos.length + editNovasFotos.length >= 5}
+                onChange={e => {
+                  const files = Array.from(e.target.files || []).slice(0, 5 - editFotos.length - editNovasFotos.length);
+                  setEditNovasFotos([...editNovasFotos, ...files]);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+              />
+              <div className="flex gap-2 flex-wrap mt-2">
+                {editNovasFotos.map((file, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={URL.createObjectURL(file)} alt="preview" className="w-16 h-16 object-cover rounded border" />
+                    <button type="button" onClick={() => setEditNovasFotos(editNovasFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <div className="flex gap-2 mt-4">
               <Button type="submit" className="flex-1" disabled={saving}>

@@ -2,6 +2,7 @@ import { Calendar, Camera, Clock, MapPin, User2, ChevronRight } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import React, { useState } from 'react';
 
 interface TaskCardProps {
   id: string;
@@ -23,6 +24,7 @@ interface TaskCardProps {
   completedAt?: string;
   editButton?: React.ReactNode;
   className?: string;
+  photos?: string[];
 }
 
 const statusConfig = {
@@ -91,8 +93,10 @@ export function TaskCard({
   createdAt,
   completedAt,
   editButton,
-  className
+  className,
+  photos = []
 }: TaskCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const mappedStatus = mapStatus(status);
   const mappedPriority = mapPriority(priority);
   
@@ -117,8 +121,16 @@ export function TaskCard({
   const isCompleted = mappedStatus === "completed";
   const completedBg = isCompleted ? "bg-blue-500/5" : "";
 
+  // Só permite expandir se for concluída
+  const handleExpand = () => {
+    if (isCompleted) setExpanded((v) => !v);
+  };
+
   return (
-    <Card className={`group hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] border-l-4 ${borderColor} hover:${borderColor.replace('/60', '/80')} ${overdueBg} ${completedBg} ${className || ''}`}>
+    <Card
+      className={`group hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] border-l-4 ${borderColor} hover:${borderColor.replace('/60', '/80')} ${overdueBg} ${completedBg} ${className || ''} ${isCompleted ? 'cursor-pointer' : ''}`}
+      onClick={handleExpand}
+    >
       <CardContent className="p-6">
         {/* Header com título e badges */}
         <div className="flex items-start justify-between mb-4">
@@ -144,6 +156,35 @@ export function TaskCard({
             )}
           </div>
         </div>
+
+        {/* Galeria de fotos (apenas se concluída e houver fotos) */}
+        {isCompleted && photos && photos.length > 0 && !expanded && (
+          <div className="flex gap-2 flex-wrap mb-4">
+            {photos.slice(0, 3).map((url, idx) => (
+              <img key={idx} src={url} alt={`Foto ${idx+1}`} className="w-16 h-16 object-cover rounded border" />
+            ))}
+            {photos.length > 3 && <span className="text-xs text-muted-foreground">+{photos.length - 3} mais</span>}
+          </div>
+        )}
+
+        {/* Expansão: anotações completas e galeria grande */}
+        {isCompleted && expanded && (
+          <div className="mb-4">
+            {anotacoes && (
+              <div className="mb-2">
+                <span className="block text-sm font-semibold text-terrah-turquoise mb-1">Anotações:</span>
+                <div className="text-sm text-muted-foreground whitespace-pre-line bg-muted/40 rounded p-2">{anotacoes}</div>
+              </div>
+            )}
+            {photos.length > 0 && (
+              <div className="flex gap-2 flex-wrap mt-2">
+                {photos.map((url, idx) => (
+                  <img key={idx} src={url} alt={`Foto ${idx+1}`} className="w-28 h-28 object-cover rounded border" />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Informações detalhadas */}
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
@@ -187,7 +228,7 @@ export function TaskCard({
         <div className="flex items-center justify-between pt-4 border-t border-border/50">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Camera className="h-4 w-4" />
-            <span className="font-medium">{photosCount} fotos</span>
+            <span className="font-medium">{photos.length} fotos</span>
           </div>
           <div className="flex items-center gap-2">
             {mappedStatus === "pending" && (
