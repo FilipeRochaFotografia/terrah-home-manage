@@ -133,8 +133,6 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
       <div className="relative overflow-hidden">
-        {/* Gradiente sutil de fundo */}
-        <div className="absolute inset-0 bg-gradient-to-r from-terrah-turquoise/5 via-transparent to-terrah-orange/5"></div>
         
         <div className="relative flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3 group">
@@ -149,7 +147,7 @@ export function Header() {
               <h1 className="text-2xl font-bold text-terrah-orange">
                 Terrah Homes
               </h1>
-              <p className="text-xs text-muted-foreground font-medium">Gestão de Demandas</p>
+              <p className="text-xs text-muted-foreground font-medium">Gestão de Tarefas</p>
           </div>
         </div>
         
@@ -175,15 +173,15 @@ export function Header() {
             <Settings className="h-5 w-5" onClick={() => setShowExportModal(true)} />
           </Button>
             <div className="relative">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="hover:bg-terrah-turquoise/10 transition-colors duration-200"
+            <Button 
+              variant="ghost" 
+              size="icon"
+              className="hover:bg-terrah-turquoise/10 transition-colors duration-200"
                 onClick={() => setShowProfileMenu((v) => !v)}
                 aria-label="Abrir menu do perfil"
-              >
-                <User className="h-5 w-5" />
-              </Button>
+            >
+            <User className="h-5 w-5" />
+          </Button>
               {showProfileMenu && (
                 <>
                   {/* Backdrop para fechar ao clicar fora */}

@@ -73,6 +73,7 @@ export function TaskList() {
   const [editFotos, setEditFotos] = useState<string[]>([]); // URLs das fotos já anexadas
   const [editNovasFotos, setEditNovasFotos] = useState<File[]>([]); // Novos arquivos a anexar
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [taskIdFilter, setTaskIdFilter] = useState<string | null>(null);
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
@@ -102,10 +103,39 @@ export function TaskList() {
     };
     window.addEventListener('filterTasksByProperty', handleFilterTasksByProperty);
 
+    // Listener para filtro por ID vindo do Dashboard
+    const handleFilterTasksById = (e: any) => {
+      if (e.detail) {
+        console.log('[TaskList] Evento filterTasksById recebido:', e.detail);
+        setTaskIdFilter(e.detail);
+        setSearchTerm('');
+        setStatusFilter('all');
+        setColorFilter('all');
+      }
+    };
+    window.addEventListener('filterTasksById', handleFilterTasksById);
+
+    // Listener para limpar filtro por ID
+    const handleClearTaskIdFilter = () => {
+      console.log('[TaskList] Evento clearTaskIdFilter recebido');
+      setTaskIdFilter(null);
+    };
+    window.addEventListener('clearTaskIdFilter', handleClearTaskIdFilter);
+
+    // Listener para limpar filtro de cor
+    const handleClearColorFilter = () => {
+      console.log('[TaskList] Evento clearColorFilter recebido');
+      setColorFilter('all');
+    };
+    window.addEventListener('clearColorFilter', handleClearColorFilter);
+
     return () => {
       window.removeEventListener('openTaskModal', handleOpenTaskModal);
       window.removeEventListener('setTaskColorFilter', handleSetTaskColorFilter);
       window.removeEventListener('filterTasksByProperty', handleFilterTasksByProperty);
+      window.removeEventListener('filterTasksById', handleFilterTasksById);
+      window.removeEventListener('clearTaskIdFilter', handleClearTaskIdFilter);
+      window.removeEventListener('clearColorFilter', handleClearColorFilter);
     };
   }, []);
 
@@ -194,8 +224,8 @@ export function TaskList() {
       setEditFotos(tarefa.fotos ?? []);
       setEditNovasFotos([]);
     } else {
-      setSelectedTarefaPredefinida(null);
-      setAgendamentoData("");
+    setSelectedTarefaPredefinida(null);
+    setAgendamentoData("");
       setAnotacoes("");
       setImovelId("");
       setResponsavelId("");
@@ -293,7 +323,7 @@ export function TaskList() {
           const ext = file.name.split('.').pop();
           const filePath = `${newId}/${uuidv4()}.${ext}`;
           const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
-          if (error) {
+      if (error) {
             console.error('Erro ao fazer upload:', error);
             alert('Erro ao fazer upload: ' + JSON.stringify(error));
           } else {
@@ -327,6 +357,7 @@ export function TaskList() {
   };
 
   const filteredTarefas = tarefas.filter(tarefa => {
+    if (taskIdFilter) return tarefa.id === taskIdFilter;
     if (propertyFilter) {
       if (tarefa.imovel_id !== propertyFilter.imovelId) return false;
       if (propertyFilter.status && tarefa.status !== propertyFilter.status) return false;
@@ -344,11 +375,12 @@ export function TaskList() {
     // Novo filtro de cor por label
     let matchesColorFilter = colorFilter === 'all';
     if (!matchesColorFilter) {
-      if (colorFilter === 'atrasada' && diasRestantes < 0) matchesColorFilter = true;
-      if (colorFilter === 'urgente' && diasRestantes === 0) matchesColorFilter = true;
-      if (colorFilter === 'atencao' && diasRestantes >= 1 && diasRestantes <= 5) matchesColorFilter = true;
-      if (colorFilter === 'moderado' && diasRestantes >= 6 && diasRestantes <= 14) matchesColorFilter = true;
-      if (colorFilter === 'normal' && diasRestantes >= 15) matchesColorFilter = true;
+      if (colorFilter === 'urgentesEatrasadas' && tarefa.status === 'em_aberto' && (diasRestantes <= 5)) matchesColorFilter = true;
+      if (colorFilter === 'atrasada' && diasRestantes < 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
+      if (colorFilter === 'urgente' && diasRestantes <= 5 && diasRestantes >= 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
+      if (colorFilter === 'atencao' && diasRestantes >= 1 && diasRestantes <= 5 && tarefa.status === 'em_aberto') matchesColorFilter = true;
+      if (colorFilter === 'moderado' && diasRestantes >= 6 && diasRestantes <= 14 && tarefa.status === 'em_aberto') matchesColorFilter = true;
+      if (colorFilter === 'normal' && diasRestantes >= 15 && tarefa.status === 'em_aberto') matchesColorFilter = true;
     }
 
     return matchesSearchTerm && matchesStatusFilter && matchesColorFilter;
@@ -409,6 +441,9 @@ export function TaskList() {
   // Botão para limpar filtro de imóvel
   const showClearPropertyFilter = !!propertyFilter;
 
+  // Botão para limpar filtro de tarefa por ID
+  const showClearTaskIdFilter = !!taskIdFilter;
+
   // Separar a cor da borda lateral da cor de fundo
   function getCardBorderClass(status: string, diasRestantes: number): string {
     if (status === 'concluida') return 'border-l-4 border-terrah-turquoise';
@@ -424,6 +459,12 @@ export function TaskList() {
         <div className="flex justify-between items-center bg-terrah-turquoise/10 rounded-lg px-4 py-2 mb-2">
           <span className="text-terrah-turquoise font-medium">Filtrando por imóvel</span>
           <Button variant="outline" size="sm" onClick={() => setPropertyFilter(null)}>Limpar filtro</Button>
+        </div>
+      )}
+      {showClearTaskIdFilter && (
+        <div className="flex justify-between items-center bg-terrah-turquoise/10 rounded-lg px-4 py-2 mb-2">
+          <span className="text-terrah-turquoise font-medium">Filtrando por tarefa específica</span>
+          <Button variant="outline" size="sm" onClick={() => setTaskIdFilter(null)}>Limpar filtro</Button>
         </div>
       )}
       {/* Header com título e ações */}
@@ -559,6 +600,7 @@ export function TaskList() {
                 onChange={e => setColorFilter(e.target.value)}
               >
                 <option value="all">Todas as cores</option>
+                <option value="urgentesEatrasadas">Urgentes e Atrasadas</option>
                 <option value="atrasada">Atrasada</option>
                 <option value="urgente">Urgente</option>
                 <option value="atencao">Atenção</option>
@@ -609,30 +651,30 @@ export function TaskList() {
             const cardDescription = tarefa.status === 'concluida' ? (tarefa.anotacoes || '-') : tarefa.descricao;
             const borderClass = getCardBorderClass(tarefa.status, diasRestantes);
             return (
-            <TaskCard
+              <TaskCard
               key={tarefa.id}
-              id={tarefa.id}
-              title={tarefa.titulo}
+                id={tarefa.id}
+                title={tarefa.titulo}
               description={cardDescription}
-              status={tarefa.status as any}
-              priority={priorityColor}
-              dueDate={tarefa.data_vencimento}
-              property={imoveis.find(i => i.id === tarefa.imovel_id)?.nome || ""}
-              assignee={"-"}
+                status={tarefa.status as any}
+                  priority={priorityColor}
+                dueDate={tarefa.data_vencimento}
+                property={imoveis.find(i => i.id === tarefa.imovel_id)?.nome || ""}
+                assignee={"-"}
               photosCount={tarefa.fotos?.length || 0}
-              responsavel={funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome}
-              anotacoes={tarefa.anotacoes}
-              diasRestantes={diasRestantes}
-              statusCor={statusCor}
-              statusLabel={statusLabel}
-              onStart={() => openStartModal(tarefa)}
-              createdAt={tarefa.created_at}
-              completedAt={tarefa.data_conclusao}
+                responsavel={funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome}
+                anotacoes={tarefa.anotacoes}
+                  diasRestantes={diasRestantes}
+                  statusCor={statusCor}
+                  statusLabel={statusLabel}
+                  onStart={() => openStartModal(tarefa)}
+                  createdAt={tarefa.created_at}
+                  completedAt={tarefa.data_conclusao}
               className={borderClass}
               editButton={isAdmin && (
-                <Button variant="ghost" size="icon" onClick={() => openForm(tarefa)} title="Editar">
-                  <Edit className="h-5 w-5" />
-                </Button>
+                  <Button variant="ghost" size="icon" onClick={() => openForm(tarefa)} title="Editar">
+                    <Edit className="h-5 w-5" />
+                  </Button>
               )}
               photos={tarefa.fotos ?? []}
             />

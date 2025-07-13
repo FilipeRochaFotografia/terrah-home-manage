@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 interface DashboardStats {
   tarefasPendentes: number;
@@ -71,6 +72,10 @@ export function Dashboard() {
     const saved = sessionStorage.getItem('alertasFechados');
     return saved ? JSON.parse(saved) : [];
   });
+  const [showReportModal, setShowReportModal] = useState(false); // Added state for modal
+  const [reportModalTitle, setReportModalTitle] = useState(''); // Added state for modal
+  const [reportModalCount, setReportModalCount] = useState(0); // Added state for modal
+  const [reportModalColor, setReportModalColor] = useState(''); // Added state for modal
 
   useEffect(() => {
     fetchDashboardData();
@@ -159,7 +164,7 @@ export function Dashboard() {
         .from('tarefas')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'concluida')
-        .gte('updated_at', inicioPeriodoStr);
+        .gte('data_conclusao', inicioPeriodoStr);
 
       // Tarefas atrasadas
       const { count: atrasadas } = await supabase
@@ -418,34 +423,18 @@ const statsData = [
     color: "text-terrah-orange",
     bg: "bg-terrah-orange/10",
       trend: stats.tarefasCriadasHoje > 0 ? `+${stats.tarefasCriadasHoje}` : "0",
-      trendUp: stats.tarefasCriadasHoje > 0
+    trendUp: stats.tarefasCriadasHoje > 0,
+    onClick: () => handleOpenReportModal('pendentes'),
   },
   {
       title: getPeriodoStatsLabel(),
       value: stats.tarefasConcluidasHoje.toString(),
     icon: CheckCircle,
-    color: "text-success",
-    bg: "bg-success/10",
+    color: "text-terrah-turquoise",
+    bg: "bg-terrah-turquoise/10",
       trend: stats.tarefasConcluidasHoje > 0 ? `+${stats.tarefasConcluidasHoje}` : "0",
-    trendUp: true
-  },
-  {
-    title: "Atrasadas",
-      value: stats.tarefasAtrasadas.toString(),
-    icon: AlertTriangle,
-    color: "text-destructive",
-    bg: "bg-destructive/10",
-      trend: stats.tarefasAtrasadas > 0 ? `${stats.tarefasAtrasadas}` : "0",
-    trendUp: false
-  },
-  {
-      title: "Urgentes (≤5 dias)",
-      value: stats.tarefasUrgentes.toString(),
-      icon: AlertTriangle,
-      color: "text-destructive",
-      bg: "bg-destructive/10",
-      trend: stats.tarefasUrgentes > 0 ? `${stats.tarefasUrgentes}` : "0",
-      trendUp: false
+    trendUp: true,
+    onClick: () => handleOpenReportModal('concluidas'),
     }
   ];
 
@@ -494,6 +483,36 @@ const statsData = [
         </Card>
       </div>
     );
+  }
+
+  // Ajustar handleOpenReportModal para aceitar 'pendentes' e 'concluidas'
+  function handleOpenReportModal(type: 'pendentes' | 'concluidas') {
+    let title = '';
+    let count = 0;
+    let color = '';
+    switch (type) {
+      case 'pendentes':
+        title = 'Tarefas Pendentes';
+        count = stats.tarefasPendentes;
+        color = 'bg-terrah-orange';
+        break;
+      case 'concluidas':
+        title = getPeriodoStatsLabel();
+        count = stats.tarefasConcluidasHoje;
+        color = 'bg-terrah-turquoise';
+        break;
+    }
+    setReportModalTitle(title);
+    setReportModalCount(count);
+    setReportModalColor(color);
+    setShowReportModal(true);
+  }
+
+  function handleCloseReportModal() {
+    setShowReportModal(false);
+    setReportModalTitle('');
+    setReportModalCount(0);
+    setReportModalColor('');
   }
 
   return (
@@ -571,40 +590,27 @@ const statsData = [
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {statsData.map((stat, index) => (
           <Card 
             key={stat.title} 
             className="relative overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-bottom-4 duration-500 cursor-pointer"
             style={{ animationDelay: `${index * 100}ms` }}
-            onClick={() => {
-              if (stat.title === "Tarefas Pendentes" || stat.title === "Atrasadas" || stat.title === "Urgentes (≤5 dias)") {
-                const event = new CustomEvent('navigateToTab', { detail: 'tasks' });
-                window.dispatchEvent(event);
-              }
-            }}
+            onClick={stat.onClick}
           >
             {/* Gradiente sutil de fundo */}
             <div className="absolute inset-0 bg-gradient-to-br from-white via-transparent to-terrah-turquoise/5 opacity-0 hover:opacity-100 transition-opacity duration-300" />
-            
             <CardHeader className="pb-2 relative z-10">
-              <div className="flex items-center justify-between mb-2">
-                <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center shadow-sm`}>
+              <div className="relative flex items-center justify-center">
+                <span className={`absolute w-14 h-14 rounded-full ${stat.bg} opacity-10`}></span>
+                <div className="flex items-center justify-center gap-2 mx-auto z-10">
                   <stat.icon className={`h-5 w-5 ${stat.color}`} />
-                </div>
-                <div className="flex items-center gap-1 text-xs">
-                  <TrendingUp className={`h-3 w-3 ${stat.trendUp ? 'text-success' : 'text-destructive'}`} />
-                  <span className={`font-medium ${stat.trendUp ? 'text-success' : 'text-destructive'}`}>
-                    {stat.trend}
-                  </span>
+                  <span className={`text-xl font-bold ${stat.color}`}>{stat.value}</span>
                 </div>
               </div>
-              <CardTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-                {stat.value}
-              </CardTitle>
             </CardHeader>
             <CardContent className="pt-0 relative z-10">
-              <p className="text-sm text-muted-foreground font-medium">{stat.title}</p>
+              <p className="text-sm text-muted-foreground font-medium text-center">{stat.title}</p>
             </CardContent>
           </Card>
         ))}
@@ -622,8 +628,11 @@ const statsData = [
                 size="sm" 
                 className="ml-auto text-xs"
                 onClick={() => {
-                  const event = new CustomEvent('navigateToTab', { detail: 'tasks' });
-                  window.dispatchEvent(event);
+                  window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('clearTaskIdFilter'));
+                    window.dispatchEvent(new CustomEvent('setTaskColorFilter', { detail: 'urgentesEatrasadas' }));
+                  }, 100);
                 }}
               >
                 Ver todas
@@ -637,8 +646,11 @@ const statsData = [
                   key={tarefa.id}
                   className="flex items-center gap-3 p-4 rounded-xl bg-destructive/5 border border-destructive/20 hover:shadow-md transition-all duration-300 cursor-pointer"
                   onClick={() => {
-                    const event = new CustomEvent('navigateToTab', { detail: 'tasks' });
-                    window.dispatchEvent(event);
+                    window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('clearColorFilter'));
+                      window.dispatchEvent(new CustomEvent('filterTasksById', { detail: tarefa.id }));
+                    }, 100);
                   }}
                 >
                   <div className="w-3 h-3 rounded-full bg-destructive animate-pulse"></div>
@@ -677,70 +689,38 @@ const statsData = [
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 rounded-lg bg-green-50 border border-green-200">
+            <div className="text-center p-4 rounded-lg bg-green-50 border border-green-200 cursor-pointer" onClick={() => handleOpenReportModal('normal')}>
               <div className="text-2xl font-bold text-green-600">{stats.tarefasNormais}</div>
               <div className="text-sm text-muted-foreground">Normal (30+ dias)</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+            <div className="text-center p-4 rounded-lg bg-yellow-50 border border-yellow-200 cursor-pointer" onClick={() => handleOpenReportModal('moderado')}>
               <div className="text-2xl font-bold text-yellow-600">{stats.tarefasModeradas}</div>
               <div className="text-sm text-muted-foreground">Moderado (15-29 dias)</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-orange-50 border border-orange-200">
+            <div className="text-center p-4 rounded-lg bg-orange-50 border border-orange-200 cursor-pointer" onClick={() => handleOpenReportModal('atencao')}>
               <div className="text-2xl font-bold text-orange-600">{stats.tarefasAtencao}</div>
               <div className="text-sm text-muted-foreground">Atenção (6-14 dias)</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-red-50 border border-red-200">
+            <div className="text-center p-4 rounded-lg bg-red-50 border border-red-200 cursor-pointer" onClick={() => handleOpenReportModal('urgente')}>
               <div className="text-2xl font-bold text-red-600">{(stats.tarefasUrgentes + (stats.tarefasAtrasadasRelatorio || 0))}</div>
               <div className="text-sm text-muted-foreground">Urgentes (≤5 dias)</div>
             </div>
           </div>
-          <div className="mt-4 p-4 bg-muted/30 rounded-lg">
-            <h4 className="font-semibold mb-2">Legenda de Cores</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded"></div>
-                <span>Verde: 30+ dias</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-                <span>Amarelo: 15-29 dias</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                <span>Laranja: 6-14 dias</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500 rounded"></div>
-                <span>Vermelho: Urgente (&le;5 dias) / Atrasadas (&lt;0 dias)</span>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
-
-      {/* Quick Stats Summary */}
-      {!isMobile && (
-        <Card className="hover:shadow-lg transition-all duration-300">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-terrah-turquoise" />
-              Resumo do Período
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 rounded-lg bg-terrah-turquoise/5 border border-terrah-turquoise/20">
-                <div className="text-2xl font-bold text-terrah-turquoise">{stats.tarefasConcluidasSemana}</div>
-                <div className="text-sm text-muted-foreground">Concluídas</div>
-              </div>
-              <div className="text-center p-4 rounded-lg bg-terrah-orange/5 border border-terrah-orange/20">
-                <div className="text-2xl font-bold text-terrah-orange">{stats.tarefasCriadasHoje}</div>
-                <div className="text-sm text-muted-foreground">Criadas</div>
-              </div>
+      {/* Modal de relatório (estrutura inicial) */}
+      <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
+        <DialogContent>
+          <div className="flex flex-col items-center justify-center p-8">
+            <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 ${reportModalColor}`}>
+              <span className="text-5xl font-bold text-white">{reportModalCount}</span>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <DialogTitle className="text-2xl font-bold mb-2">{reportModalTitle}</DialogTitle>
+            {/* Aqui virão as informações detalhadas do relatório */}
+            <div className="mt-4">Em breve: detalhes das tarefas deste grupo.</div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

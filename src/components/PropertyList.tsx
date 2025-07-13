@@ -190,16 +190,16 @@ export function PropertyList() {
                   </div>
                 )}
               </div>
-              {imovel.observacao && (
-                <div className="text-sm text-muted-foreground mb-2">{imovel.observacao}</div>
-              )}
-              <div className="flex gap-2 mt-2">
+                {imovel.observacao && (
+                  <div className="text-sm text-muted-foreground mb-2">{imovel.observacao}</div>
+                )}
+                <div className="flex gap-2 mt-2">
                 <Button variant="outline" size="sm" onClick={() => handleExpand(imovel.id, 'pendentes')}>
                   <List className="h-4 w-4 mr-1" /> Tarefas Pendentes {expandedImovel?.id === imovel.id && expandedImovel.tipo === 'pendentes' ? <ChevronUp className="ml-1 w-4 h-4" /> : <ChevronDown className="ml-1 w-4 h-4" />}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => handleExpand(imovel.id, 'historico')}>
                   <History className="h-4 w-4 mr-1" /> Histórico {expandedImovel?.id === imovel.id && expandedImovel.tipo === 'historico' ? <ChevronUp className="ml-1 w-4 h-4" /> : <ChevronDown className="ml-1 w-4 h-4" />}
-                </Button>
+                  </Button>
               </div>
               {/* Lista compacta de tarefas pendentes */}
               {expandedImovel?.id === imovel.id && (
@@ -230,7 +230,7 @@ export function PropertyList() {
                       }, 100);
                     }}>
                       Abrir em Tarefas
-                    </Button>
+                  </Button>
                   </div>
                 </div>
               )}

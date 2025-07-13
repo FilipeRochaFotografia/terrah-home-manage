@@ -50,6 +50,17 @@
 | Painel de relatórios/exportação                                             |                  |               |
 | Sincronização offline                                                       |                  |               |
 | Acessibilidade e onboarding                                                 |                  |               |
-| Histórico e edição de tarefas                                               |                  |               |
+| Histórico e edição de tarefas                                               |                  |               | 
 | Testes de usabilidade e performance                                         |                  |               |
 | Wireframes e documentação visual                                            |                  |               | 
+
+---
+
+## Changelog (últimas tentativas e ajustes)
+
+- Implementação do upload de fotos para tarefas usando Supabase Storage.
+- Ajuste do código para usar bucket novo (`fotosapp`) com policies e RLS.
+- Policies de INSERT e SELECT criadas para permitir upload e leitura pública.
+- Debug detalhado de erros de RLS, policies e permissões no Supabase.
+- Melhorias no menu de perfil: exibição de nome, e-mail e badge de Admin.
+- Commit de checkpoint criado para preservar histórico de todas as tentativas e ajustes. 

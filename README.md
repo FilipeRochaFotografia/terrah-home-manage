@@ -139,6 +139,10 @@ src/
 - ✅ Correção do erro PATCH 400 ao concluir tarefas
 - ✅ Cards de tarefas concluídas mostram responsável e anotações
 
+### [2024-07-12] - Atualização do título e meta tags do index.html para 'Terrah Homes - Gestão de Tarefas'.
+- Implementado filtro 'Urgentes e Atrasadas' na TaskList, integrado ao dashboard.
+- Header corrigido: agora exibe 'Gestão de Tarefas' e sem gradiente de fundo.
+
 ## 🤝 Contribuição
 
 1. Fork o projeto
@@ -158,3 +162,16 @@ Terrah Homes - [contato@terrahhomes.com](mailto:contato@terrahhomes.com)
 ---
 
 **Desenvolvido com ❤️ para a Terrah Homes**
+
+---
+
+## Changelog (últimas tentativas e ajustes)
+
+- Implementação do upload de fotos para tarefas usando Supabase Storage.
+- Ajuste do código para usar bucket novo (`fotosapp`) com policies e RLS.
+- Policies de INSERT e SELECT criadas para permitir upload e leitura pública.
+- Debug detalhado de erros de RLS, policies e permissões no Supabase.
+- Melhorias no menu de perfil: exibição de nome, e-mail e badge de Admin.
+- Commit de checkpoint criado para preservar histórico de todas as tentativas e ajustes.
+
+(Para detalhes completos, veja também os arquivos de documentação e histórico do projeto.)

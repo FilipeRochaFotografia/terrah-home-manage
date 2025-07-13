@@ -22,3 +22,17 @@ O projeto surgiu da necessidade de automatizar e controlar tarefas recorrentes e
 
 ## Atualização 12/07 – Alinhamento Estratégico
 O projeto segue alinhado ao objetivo de automação, transparência e escalabilidade, com foco mobile-first e estrutura pronta para expansão. As próximas etapas priorizam melhorias de UX/UI, filtros avançados, upload de fotos, notificações push, relatórios, sincronização offline e onboarding, conforme análise consolidada do status atual. 
+
+---
+
+## Changelog (últimas tentativas e ajustes)
+
+- Implementação do upload de fotos para tarefas usando Supabase Storage.
+- Ajuste do código para usar bucket novo (`fotosapp`) com policies e RLS.
+- Policies de INSERT e SELECT criadas para permitir upload e leitura pública.
+- Debug detalhado de erros de RLS, policies e permissões no Supabase.
+- Melhorias no menu de perfil: exibição de nome, e-mail e badge de Admin.
+- Commit de checkpoint criado para preservar histórico de todas as tentativas e ajustes. 
+- Atualização do título e meta tags do index.html para 'Terrah Homes - Gestão de Tarefas'. 
+- Implementado filtro 'Urgentes e Atrasadas' na TaskList, integrado ao dashboard. 
+- Header corrigido: agora exibe 'Gestão de Tarefas' e sem gradiente de fundo. 

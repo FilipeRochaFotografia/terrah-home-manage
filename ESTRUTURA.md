@@ -42,3 +42,14 @@ terrah-homes/
 
 ## Atualização 12/07 – Estrutura e Evolução
 A estrutura modular do projeto segue adequada para manutenção e expansão. As próximas melhorias focam em UX/UI, filtros avançados, upload de fotos, notificações push, painel de relatórios, sincronização offline e onboarding, garantindo escalabilidade e experiência mobile-first. 
+
+---
+
+## Changelog (últimas tentativas e ajustes)
+
+- Implementação do upload de fotos para tarefas usando Supabase Storage.
+- Ajuste do código para usar bucket novo (`fotosapp`) com policies e RLS.
+- Policies de INSERT e SELECT criadas para permitir upload e leitura pública.
+- Debug detalhado de erros de RLS, policies e permissões no Supabase.
+- Melhorias no menu de perfil: exibição de nome, e-mail e badge de Admin.
+- Commit de checkpoint criado para preservar histórico de todas as tentativas e ajustes. 
