@@ -11,6 +11,7 @@ interface Funcionario {
   telefone?: string;
   cargo?: string;
   ativo: boolean;
+  user_id?: string;
 }
 
 interface TarefaAtribuida {
@@ -33,6 +34,7 @@ export function FuncionariosList() {
   const [saving, setSaving] = useState(false);
   const [selectedFuncionario, setSelectedFuncionario] = useState<string | null>(null);
   const [tarefasAtribuidas, setTarefasAtribuidas] = useState<TarefaAtribuida[]>([]);
+  const [filtroTarefas, setFiltroTarefas] = useState<'todas' | 'pendentes' | 'concluidas'>('todas');
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
@@ -45,13 +47,16 @@ export function FuncionariosList() {
     setLoading(true);
     const { data, error } = await supabase
       .from("funcionarios")
-      .select("*")
+      .select("id, nome, email, telefone, cargo, ativo, user_id")
       .order("nome");
     if (!error && data) setFuncionarios(data);
     setLoading(false);
   }
 
-  async function fetchTarefasAtribuidas(funcionarioId: string) {
+  async function fetchTarefasAtribuidas(funcionario: Funcionario) {
+    // Usar user_id do funcionário para buscar tarefas
+    const userIdToSearch = funcionario.user_id || funcionario.id;
+    
     const { data, error } = await supabase
       .from("tarefas")
       .select(`
@@ -61,13 +66,13 @@ export function FuncionariosList() {
         data_vencimento,
         imoveis!inner(nome)
       `)
-      .eq("responsavel_id", funcionarioId)
+      .eq("responsavel_id", userIdToSearch)
       .order("data_vencimento", { ascending: false });
 
     if (!error && data) {
       setTarefasAtribuidas(data.map(t => ({
         ...t,
-        imovel_nome: t.imoveis.nome
+        imovel_nome: (t.imoveis as any).nome
       })));
     }
   }
@@ -117,13 +122,15 @@ export function FuncionariosList() {
     }
   }
 
-  function handleFuncionarioClick(funcionarioId: string) {
-    if (selectedFuncionario === funcionarioId) {
+  function handleFuncionarioClick(funcionario: Funcionario) {
+    if (selectedFuncionario === funcionario.id) {
       setSelectedFuncionario(null);
       setTarefasAtribuidas([]);
+      setFiltroTarefas('todas');
     } else {
-      setSelectedFuncionario(funcionarioId);
-      fetchTarefasAtribuidas(funcionarioId);
+      setSelectedFuncionario(funcionario.id);
+      setFiltroTarefas('todas');
+      fetchTarefasAtribuidas(funcionario);
     }
   }
 
@@ -185,7 +192,7 @@ export function FuncionariosList() {
                 className={`group hover:shadow-lg transition-all duration-300 border-l-4 border-l-terrah-turquoise/20 hover:border-l-terrah-turquoise cursor-pointer ${
                   selectedFuncionario === funcionario.id ? 'ring-2 ring-terrah-turquoise/30' : ''
                 }`}
-                onClick={() => handleFuncionarioClick(funcionario.id)}
+                onClick={() => handleFuncionarioClick(funcionario)}
               >
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -220,7 +227,7 @@ export function FuncionariosList() {
 
               {/* Tarefas atribuídas */}
               {selectedFuncionario === funcionario.id && (
-                <div className="mt-4 ml-4 space-y-3">
+                <div className="mt-4 ml-4 space-y-4">
                   <h4 className="text-lg font-semibold text-terrah-turquoise flex items-center gap-2">
                     <Calendar className="h-5 w-5" />
                     Tarefas Atribuídas ({tarefasAtribuidas.length})
@@ -232,23 +239,104 @@ export function FuncionariosList() {
                       <p>Nenhuma tarefa atribuída</p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {tarefasAtribuidas.map((tarefa) => (
-                        <div key={tarefa.id} className="bg-muted/30 rounded-lg p-3 flex items-center justify-between">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{tarefa.titulo}</p>
-                            <p className="text-xs text-muted-foreground">{tarefa.imovel_nome}</p>
+                    <div className="space-y-4">
+                      {/* Botões Pendentes e Concluídas */}
+                      <div className="flex gap-2">
+                        <button 
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            filtroTarefas === 'todas'
+                              ? 'bg-terrah-turquoise text-white' 
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                          onClick={() => setFiltroTarefas('todas')}
+                        >
+                          Todas ({tarefasAtribuidas.length})
+                        </button>
+                        <button 
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            filtroTarefas === 'pendentes'
+                              ? 'bg-terrah-orange text-white'
+                              : tarefasAtribuidas.filter(t => t.status === 'em_aberto').length === 0 
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                : 'bg-terrah-orange/10 text-terrah-orange hover:bg-terrah-orange/20'
+                          }`}
+                          disabled={tarefasAtribuidas.filter(t => t.status === 'em_aberto').length === 0}
+                          onClick={() => setFiltroTarefas('pendentes')}
+                        >
+                          <Clock className="h-4 w-4 inline mr-1" />
+                          {tarefasAtribuidas.filter(t => t.status === 'em_aberto').length}
+                        </button>
+                        <button 
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            filtroTarefas === 'concluidas'
+                              ? 'bg-success text-white'
+                              : tarefasAtribuidas.filter(t => t.status === 'concluida').length === 0 
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                : 'bg-success/10 text-success hover:bg-success/20'
+                          }`}
+                          disabled={tarefasAtribuidas.filter(t => t.status === 'concluida').length === 0}
+                          onClick={() => setFiltroTarefas('concluidas')}
+                        >
+                          <CheckCircle className="h-4 w-4 inline mr-1" />
+                          {tarefasAtribuidas.filter(t => t.status === 'concluida').length}
+                        </button>
+                      </div>
+
+                      {/* Micro Cards das Tarefas */}
+                      <div>
+                        {(() => {
+                          const tarefasFiltradas = tarefasAtribuidas.filter(tarefa => {
+                            if (filtroTarefas === 'pendentes') return tarefa.status === 'em_aberto';
+                            if (filtroTarefas === 'concluidas') return tarefa.status === 'concluida';
+                            return true; // 'todas'
+                          });
+                          
+                          if (tarefasFiltradas.length === 0) {
+                            return (
+                              <div className="text-center py-4 text-muted-foreground bg-muted/20 rounded-lg">
+                                <Clock className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                                <p className="text-sm">
+                                  {filtroTarefas === 'pendentes' ? 'Nenhuma tarefa pendente' : 
+                                   filtroTarefas === 'concluidas' ? 'Nenhuma tarefa concluída' : 
+                                   'Nenhuma tarefa encontrada'}
+                                </p>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {tarefasFiltradas.map((tarefa) => (
+                                <div 
+                                  key={tarefa.id} 
+                                  className="bg-muted/30 rounded-lg p-3 hover:bg-muted/50 transition-all cursor-pointer border-l-2 border-l-terrah-turquoise/20 hover:border-l-terrah-turquoise"
+                                  onClick={() => {
+                                    // Navegar para aba de tarefas e filtrar por esta tarefa específica
+                                    window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+                                    setTimeout(() => {
+                                      window.dispatchEvent(new CustomEvent('clearColorFilter'));
+                                      window.dispatchEvent(new CustomEvent('filterTasksById', { detail: tarefa.id }));
+                                    }, 100);
+                                  }}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-sm truncate">{tarefa.titulo}</p>
+                                      <p className="text-xs text-muted-foreground truncate">{tarefa.imovel_nome}</p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {new Date(tarefa.data_vencimento).toLocaleDateString("pt-BR")}
+                                      </p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className={`${getStatusColor(tarefa.status)} border font-medium inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold`}>
+                                    <div className={`${getStatusColor(tarefa.status)} border-0 font-medium inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ml-2`}>
                               {getStatusLabel(tarefa.status)}
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(tarefa.data_vencimento).toLocaleDateString("pt-BR")}
-                            </span>
                           </div>
                         </div>
                       ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -3,12 +3,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TaskCard } from "./TaskCard";
-import { Plus, Edit, Trash2, Calendar, User2, FileText, Filter, Search, RefreshCw, Clock, AlertTriangle, CheckCircle, Camera } from "lucide-react";
+import { Plus, Edit, Trash2, Calendar, User2, FileText, Filter, Search, RefreshCw, Clock, AlertTriangle, CheckCircle, Camera, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 import { useRef } from 'react';
+import { calcularProximaData, formatarPeriodicidade, validarPeriodicidade, migrarPeriodicidadeParaNovoFormato } from "@/lib/utils";
+import { uploadMultiplePhotos, checkStorageHealth } from "@/lib/photoUpload";
+import { getDummyPhotosForTask, shouldTaskHavePhotos } from "@/data/dummyPhotos";
 
 interface TarefaPredefinida {
   id: string;
@@ -62,7 +65,7 @@ export function TaskList() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [colorFilter, setColorFilter] = useState<string>('all');
-  const { toast } = useToast();
+
   const [showStartModal, setShowStartModal] = useState(false);
   const [startTarefa, setStartTarefa] = useState<Tarefa | null>(null);
   const [conclusaoData, setConclusaoData] = useState("");
@@ -74,15 +77,57 @@ export function TaskList() {
   const [editNovasFotos, setEditNovasFotos] = useState<File[]>([]); // Novos arquivos a anexar
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [taskIdFilter, setTaskIdFilter] = useState<string | null>(null);
+  const [storageHealthy, setStorageHealthy] = useState<boolean>(true);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [concludingTask, setConcludingTask] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [deletingTask, setDeletingTask] = useState<boolean>(false);
+  const [tipoVeiculo, setTipoVeiculo] = useState<string>("");
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
+
+  // Função para verificar se é tarefa de veículo ou conforme necessidade
+  function isVehicleTask(titulo: string): boolean {
+    const tituloLower = titulo.toLowerCase();
+    
+    // Tarefas específicas "conforme necessidade"
+    if (tituloLower.includes('troca') && tituloLower.includes('gás')) {
+      return false; // Troca de gás não é tarefa de veículo, mas é conforme necessidade
+    }
+    
+    const vehicleTasks = ['abastecimento', 'manutenção', 'lavagem'];
+    
+    // Verificar se contém palavras-chave de veículo
+    const vehicleKeywords = ['veículo', 'veiculo', 'automóvel', 'automovel', 'automóveis', 'automoveis', 'carro', 'carros', 'moto', 'motos'];
+    const hasVehicleKeyword = vehicleKeywords.some(keyword => tituloLower.includes(keyword));
+    
+    // Verificar se contém tarefa relacionada a veículo
+    const hasVehicleTask = vehicleTasks.some(task => tituloLower.includes(task));
+    
+    return hasVehicleTask && hasVehicleKeyword;
+  }
+  
+  // Função para verificar se é tarefa "conforme necessidade" (sem imóvel)
+  function isOnDemandTask(titulo: string): boolean {
+    const tituloLower = titulo.toLowerCase();
+    
+    // Tarefas de veículos
+    if (isVehicleTask(titulo)) return true;
+    
+    // Troca de gás
+    if (tituloLower.includes('troca') && tituloLower.includes('gás')) return true;
+    
+    return false;
+  }
 
   useEffect(() => {
     fetchTarefas();
     fetchTarefasPredefinidas();
     fetchImoveis();
     fetchFuncionarios();
+    checkStorageConfiguration();
 
     // Listener para abrir modal de nova tarefa
     const handleOpenTaskModal = () => {
@@ -129,6 +174,16 @@ export function TaskList() {
     };
     window.addEventListener('clearColorFilter', handleClearColorFilter);
 
+    // Listener para filtro de status vindo do Dashboard
+    const handleSetStatusFilter = (e: any) => {
+      console.log('[TaskList] Evento setStatusFilter recebido:', e.detail);
+      if (e.detail) {
+        setStatusFilter(e.detail);
+        setColorFilter('all'); // Limpar filtro de cor quando status for alterado
+      }
+    };
+    window.addEventListener('setStatusFilter', handleSetStatusFilter);
+
     return () => {
       window.removeEventListener('openTaskModal', handleOpenTaskModal);
       window.removeEventListener('setTaskColorFilter', handleSetTaskColorFilter);
@@ -136,6 +191,7 @@ export function TaskList() {
       window.removeEventListener('filterTasksById', handleFilterTasksById);
       window.removeEventListener('clearTaskIdFilter', handleClearTaskIdFilter);
       window.removeEventListener('clearColorFilter', handleClearColorFilter);
+      window.removeEventListener('setStatusFilter', handleSetStatusFilter);
     };
   }, []);
 
@@ -197,7 +253,14 @@ export function TaskList() {
     const { data, error } = await supabase
       .from("tarefas_predefinidas")
       .select("id, titulo, descricao, periodicidade, observacao");
-    if (!error && data) setTarefasPredefinidas(data);
+    if (!error && data) {
+      // Normalizar periodicidades para o novo formato
+      const tarefasNormalizadas = data.map(tarefa => ({
+        ...tarefa,
+        periodicidade: migrarPeriodicidadeParaNovoFormato(tarefa.periodicidade)
+      }));
+      setTarefasPredefinidas(tarefasNormalizadas);
+    }
   }
 
   async function fetchImoveis() {
@@ -208,6 +271,16 @@ export function TaskList() {
   async function fetchFuncionarios() {
     const { data } = await supabase.from("funcionarios").select("id, nome, email, cargo, user_id").eq("ativo", true).order("nome");
     if (data) setFuncionarios(data);
+  }
+
+  async function checkStorageConfiguration() {
+    const health = await checkStorageHealth();
+    setStorageHealthy(health.isHealthy);
+    
+    if (!health.isHealthy) {
+      console.warn('Storage configuration issue:', health.error);
+      toast.error(`Problema no storage: ${health.error}`);
+    }
   }
 
   function openForm(tarefa?: Tarefa) {
@@ -223,6 +296,7 @@ export function TaskList() {
       setResponsavelId(tarefa.responsavel_id || "");
       setEditFotos(tarefa.fotos ?? []);
       setEditNovasFotos([]);
+      setTipoVeiculo("");
     } else {
     setSelectedTarefaPredefinida(null);
     setAgendamentoData("");
@@ -231,6 +305,7 @@ export function TaskList() {
       setResponsavelId("");
       setEditFotos([]);
       setEditNovasFotos([]);
+      setTipoVeiculo("");
     }
     setShowForm(true);
   }
@@ -243,6 +318,7 @@ export function TaskList() {
     setAnotacoes("");
     setImovelId("");
     setResponsavelId("");
+    setTipoVeiculo("");
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -251,7 +327,8 @@ export function TaskList() {
       alert("Selecione uma tarefa predefinida");
       return;
     }
-    if (!imovelId) {
+    // Tarefas "conforme necessidade" não precisam de imóvel
+    if (!isOnDemandTask(selectedTarefaPredefinida.titulo) && !imovelId) {
       alert("Selecione um imóvel");
       return;
     }
@@ -259,28 +336,55 @@ export function TaskList() {
       alert("Selecione uma data de agendamento");
       return;
     }
+    if (isVehicleTask(selectedTarefaPredefinida.titulo) && !tipoVeiculo) {
+      alert("Selecione o tipo de veículo");
+      return;
+    }
 
     setSaving(true);
     let fotosUrls = [...editFotos];
-    if (editNovasFotos.length > 0) {
-      for (const file of editNovasFotos) {
-        const ext = file.name.split('.').pop();
-        const filePath = `${editTarefa.id}/${uuidv4()}.${ext}`;
-        const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
-        if (error) {
-          console.error('Erro ao fazer upload:', error);
-          alert('Erro ao fazer upload: ' + JSON.stringify(error));
-        } else {
-          const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
-          if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+    
+    // Upload de novas fotos usando o utilitário melhorado
+    if (editNovasFotos.length > 0 && editTarefa) {
+      if (!storageHealthy) {
+        toast.error('Storage não configurado. Não é possível fazer upload de fotos.');
+        setSaving(false);
+        return;
+      }
+
+      const uploadResult = await uploadMultiplePhotos(
+        editNovasFotos, 
+        editTarefa.id,
+        (current, total) => {
+          setUploadProgress({ current, total });
         }
+      );
+
+      setUploadProgress(null);
+
+      if (uploadResult.success) {
+        fotosUrls.push(...uploadResult.urls);
+        if (uploadResult.errors.length > 0) {
+          toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
+        } else {
+          toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
+        }
+      } else {
+        toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
+        setSaving(false);
+        return;
       }
     }
+    // Modificar título se for tarefa de veículo
+    const tituloFinal = isVehicleTask(selectedTarefaPredefinida.titulo) && tipoVeiculo 
+      ? `${selectedTarefaPredefinida.titulo} - ${tipoVeiculo.charAt(0).toUpperCase() + tipoVeiculo.slice(1)}`
+      : selectedTarefaPredefinida.titulo;
+
     const tarefaData = {
-      titulo: selectedTarefaPredefinida.titulo,
+      titulo: tituloFinal,
       descricao: selectedTarefaPredefinida.descricao,
       data_vencimento: agendamentoData,
-      imovel_id: imovelId,
+      imovel_id: isOnDemandTask(selectedTarefaPredefinida.titulo) ? null : imovelId,
       responsavel_id: responsavelId || null, // user_id do funcionário
       anotacoes: anotacoes || null,
       tarefa_predefinida_id: selectedTarefaPredefinida.id,
@@ -294,10 +398,10 @@ export function TaskList() {
     } else {
       // 1. Cria a tarefa sem fotos
       const { data: insertData, error: insertError } = await supabase.from("tarefas").insert({
-        titulo: selectedTarefaPredefinida.titulo,
+        titulo: tituloFinal,
         descricao: selectedTarefaPredefinida.descricao,
         data_vencimento: agendamentoData,
-        imovel_id: imovelId,
+        imovel_id: isOnDemandTask(selectedTarefaPredefinida.titulo) ? null : imovelId,
         responsavel_id: responsavelId || null,
         anotacoes: anotacoes || null,
         tarefa_predefinida_id: selectedTarefaPredefinida.id,
@@ -319,18 +423,31 @@ export function TaskList() {
       }
       let fotosUrls: string[] = [];
       if (editNovasFotos.length > 0 && newId) {
-        for (const file of editNovasFotos) {
-          const ext = file.name.split('.').pop();
-          const filePath = `${newId}/${uuidv4()}.${ext}`;
-          const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
-      if (error) {
-            console.error('Erro ao fazer upload:', error);
-            alert('Erro ao fazer upload: ' + JSON.stringify(error));
+        if (!storageHealthy) {
+          toast.error('Storage não configurado. Tarefa criada sem fotos.');
+        } else {
+          const uploadResult = await uploadMultiplePhotos(
+            editNovasFotos, 
+            newId,
+            (current, total) => {
+              setUploadProgress({ current, total });
+            }
+          );
+
+          setUploadProgress(null);
+
+          if (uploadResult.success) {
+            fotosUrls = uploadResult.urls;
+            if (uploadResult.errors.length > 0) {
+              toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
+            } else {
+              toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
+            }
           } else {
-            const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
-            if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+            toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
           }
         }
+        
         // 4. Atualiza a tarefa com as URLs das fotos
         await supabase.from("tarefas").update({ fotos: fotosUrls }).eq("id", newId);
       }
@@ -341,19 +458,51 @@ export function TaskList() {
     window.dispatchEvent(new Event('tarefasAtualizadas'));
   }
 
-  async function handleDelete(id: string) {
-    if (window.confirm("Tem certeza que deseja remover esta tarefa?")) {
-      await supabase.from("tarefas").delete().eq("id", id);
+  function handleDelete(id: string) {
+    setTaskToDelete(id);
+    setShowDeleteModal(true);
+  }
+
+  async function confirmDelete() {
+    if (!taskToDelete || deletingTask) return;
+    
+    setDeletingTask(true);
+    try {
+      const { error } = await supabase.from("tarefas").delete().eq("id", taskToDelete);
+      
+      if (error) {
+        console.error('Erro ao excluir tarefa:', error);
+        toast.error(`Erro ao excluir: ${error.message}`);
+        return;
+      }
+      
+      toast.success('Tarefa excluída com sucesso!');
       fetchTarefas();
       window.dispatchEvent(new Event('tarefasAtualizadas'));
+      
+    } catch (error) {
+      console.error('Erro inesperado ao excluir:', error);
+      toast.error('Erro inesperado ao excluir tarefa');
+    } finally {
+      setDeletingTask(false);
+      closeDeleteModal();
     }
+  }
+
+  function closeDeleteModal() {
+    setShowDeleteModal(false);
+    setTaskToDelete(null);
+    setDeletingTask(false);
   }
 
   const stats = {
     total: tarefas.length,
     pendentes: tarefas.filter(t => t.status === 'em_aberto').length,
     concluidas: tarefas.filter(t => t.status === 'concluida').length,
-    urgentes: tarefas.filter(t => calcularDiasRestantes(t.data_vencimento) <= 5 && t.status === 'em_aberto').length,
+          urgentes: tarefas.filter(t => {
+        const diasRestantes = calcularDiasRestantes(t.data_vencimento);
+        return (diasRestantes <= 5 || diasRestantes < 0) && t.status === 'em_aberto';
+      }).length,
   };
 
   const filteredTarefas = tarefas.filter(tarefa => {
@@ -375,7 +524,7 @@ export function TaskList() {
     // Novo filtro de cor por label
     let matchesColorFilter = colorFilter === 'all';
     if (!matchesColorFilter) {
-      if (colorFilter === 'urgentesEatrasadas' && tarefa.status === 'em_aberto' && (diasRestantes <= 5)) matchesColorFilter = true;
+      if (colorFilter === 'urgentesEatrasadas' && tarefa.status === 'em_aberto' && (diasRestantes <= 5 || diasRestantes < 0)) matchesColorFilter = true;
       if (colorFilter === 'atrasada' && diasRestantes < 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
       if (colorFilter === 'urgente' && diasRestantes <= 5 && diasRestantes >= 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
       if (colorFilter === 'atencao' && diasRestantes >= 1 && diasRestantes <= 5 && tarefa.status === 'em_aberto') matchesColorFilter = true;
@@ -389,6 +538,7 @@ export function TaskList() {
   // Adicionar handlers para o modal de início de tarefa
   function openStartModal(tarefa: Tarefa) {
     setStartTarefa(tarefa);
+    setConclusaoData(getTodayDate()); // Inicializa com data atual
     setShowStartModal(true);
   }
   function closeStartModal() {
@@ -398,8 +548,8 @@ export function TaskList() {
     setConclusaoResponsavel("");
     setConclusaoAnotacoes("");
     setConclusaoFotos([]);
+    setConcludingTask(false);
   }
-  // 1. Sempre usar data atual como data_conclusao
   function getTodayDate() {
     const today = new Date();
     return today.toISOString().slice(0, 10);
@@ -407,35 +557,139 @@ export function TaskList() {
 
   async function handleStartSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!startTarefa) return;
-    const dataConclusaoValida = getTodayDate();
+    if (!startTarefa || concludingTask) return;
+    
+    setConcludingTask(true);
+    console.log('Iniciando conclusão de tarefa:', startTarefa.id);
+    console.log('Fotos selecionadas:', conclusaoFotos.length);
+    
+    const dataConclusaoValida = conclusaoData || getTodayDate();
+    console.log('Data de conclusão selecionada:', conclusaoData);
+    console.log('Data de conclusão válida:', dataConclusaoValida);
     const responsavelValido = conclusaoResponsavel && conclusaoResponsavel.trim() !== '' ? conclusaoResponsavel : null;
     let fotosUrls: string[] = [];
+    
+    // Upload de fotos se houver
     if (conclusaoFotos.length > 0) {
-      for (const file of conclusaoFotos) {
-        const ext = file.name.split('.').pop();
-        const filePath = `${startTarefa.id}/${uuidv4()}.${ext}`;
-        const { data, error } = await supabase.storage.from('fotosapp').upload(filePath, file, { upsert: true });
-        if (error) {
-          console.error('Erro ao fazer upload:', error);
-          alert('Erro ao fazer upload: ' + JSON.stringify(error));
+      if (!storageHealthy) {
+        toast.error('Storage não configurado. Tarefa concluída sem fotos.');
+      } else {
+        console.log('Iniciando upload de', conclusaoFotos.length, 'fotos...');
+        
+        const uploadResult = await uploadMultiplePhotos(
+          conclusaoFotos, 
+          startTarefa.id,
+          (current, total) => {
+            setUploadProgress({ current, total });
+          }
+        );
+
+        setUploadProgress(null);
+
+        if (uploadResult.success) {
+          fotosUrls = uploadResult.urls;
+          console.log('Upload concluído. URLs:', fotosUrls);
+          if (uploadResult.errors.length > 0) {
+            toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
+          } else {
+            toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
+          }
         } else {
-          const { data: publicUrlData } = supabase.storage.from('fotosapp').getPublicUrl(filePath);
-          if (publicUrlData?.publicUrl) fotosUrls.push(publicUrlData.publicUrl);
+          console.error('Falha no upload:', uploadResult.errors);
+          toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
+          setConcludingTask(false);
+          return; // Para o processo se upload falhou
         }
       }
     }
-    await supabase.from("tarefas").update({
+    
+    try {
+      console.log('Atualizando tarefa no banco...');
+      // Concluir a tarefa atual
+      const { error } = await supabase.from("tarefas").update({
       status: "concluida",
-      data_conclusao: dataConclusaoValida,
-      responsavel_id: responsavelValido,
-      anotacoes: conclusaoAnotacoes || null,
-      fotos: fotosUrls // sempre array, mesmo vazio
+        data_conclusao: dataConclusaoValida,
+        responsavel_id: responsavelValido,
+        anotacoes: conclusaoAnotacoes || null,
+        fotos: fotosUrls // sempre array, mesmo vazio
     }).eq("id", startTarefa.id);
+
+      if (error) {
+        console.error('Erro ao atualizar tarefa:', error);
+        toast.error(`Erro ao salvar: ${error.message}`);
+        setConcludingTask(false);
+        return;
+      }
+
+      console.log('Tarefa atualizada com sucesso!');
+
+      // Auto-criação de próxima tarefa se for recorrente
+      if (startTarefa.tarefa_predefinida_id) {
+        await criarProximaTarefaRecorrente(startTarefa, dataConclusaoValida);
+      }
+      
     await fetchTarefas();
     closeStartModal();
-    toast({ title: "Tarefa concluída!", description: "O admin foi notificado." });
+      toast.success("Tarefa concluída! O admin foi notificado.");
     window.dispatchEvent(new Event('tarefasAtualizadas'));
+      
+    } catch (error) {
+      console.error('Erro geral na conclusão da tarefa:', error);
+      toast.error('Erro inesperado ao concluir tarefa');
+    } finally {
+      setConcludingTask(false);
+    }
+  }
+
+  /**
+   * Cria automaticamente a próxima tarefa recorrente baseada na periodicidade
+   */
+  async function criarProximaTarefaRecorrente(tarefaConcluida: Tarefa, dataConclusao: string) {
+    try {
+      // Buscar a tarefa predefinida para obter a periodicidade
+      const tarefaPredefinida = tarefasPredefinidas.find(t => t.id === tarefaConcluida.tarefa_predefinida_id);
+      if (!tarefaPredefinida || !tarefaPredefinida.periodicidade) {
+        console.log('Tarefa sem periodicidade definida, não criando próxima tarefa');
+        return;
+      }
+
+      // Calcular a próxima data
+      const proximaData = calcularProximaData(dataConclusao, tarefaPredefinida.periodicidade);
+      if (!proximaData) {
+        console.error('Erro ao calcular próxima data para periodicidade:', tarefaPredefinida.periodicidade);
+        return;
+      }
+
+      // Criar nova tarefa com os mesmos dados, mas nova data
+      const novaTarefa = {
+        titulo: tarefaPredefinida.titulo,
+        descricao: tarefaPredefinida.descricao,
+        status: 'em_aberto',
+        data_criacao: dataConclusao, // Data de criação = data de conclusão da anterior
+        data_vencimento: proximaData.toISOString().split('T')[0], // Próxima data calculada
+        imovel_id: tarefaConcluida.imovel_id,
+        responsavel_id: tarefaConcluida.responsavel_id,
+        tarefa_predefinida_id: tarefaPredefinida.id,
+        anotacoes: null,
+        fotos: []
+      };
+
+      const { data, error } = await supabase
+        .from('tarefas')
+        .insert(novaTarefa)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao criar próxima tarefa recorrente:', error);
+        toast.error("Tarefa concluída, mas não foi possível criar a próxima tarefa automática.");
+      } else {
+        console.log('Próxima tarefa criada automaticamente:', data);
+        toast.success(`Próxima tarefa criada! Nova tarefa agendada para ${proximaData.toLocaleDateString('pt-BR')}`);
+      }
+    } catch (error) {
+      console.error('Erro ao processar criação de próxima tarefa:', error);
+    }
   }
 
   // Botão para limpar filtro de imóvel
@@ -468,7 +722,7 @@ export function TaskList() {
         </div>
       )}
       {/* Header com título e ações */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
           Tarefas
@@ -485,6 +739,7 @@ export function TaskList() {
             onClick={handleRefresh}
             disabled={refreshing}
             className="hover:bg-muted/50"
+            title="Atualizar"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           </Button>
@@ -502,59 +757,91 @@ export function TaskList() {
       </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105">
-          <CardContent className="p-4">
+      {/* Stats Cards - Compactos */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card 
+          className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 cursor-pointer"
+          onClick={() => {
+            setStatusFilter('em_aberto');
+            setColorFilter('all');
+            setTaskIdFilter(null);
+            setSearchTerm('');
+          }}
+        >
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-xl bg-terrah-orange/10 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-terrah-orange" />
+              <div className="w-8 h-8 rounded-lg bg-terrah-orange/10 flex items-center justify-center">
+                <Clock className="h-4 w-4 text-terrah-orange" />
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-foreground">{stats.pendentes}</div>
-                <div className="text-sm text-muted-foreground">Pendentes</div>
+                <div className="text-xl font-bold text-foreground">{stats.pendentes}</div>
+                <div className="text-xs text-muted-foreground">Pendentes</div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105">
-          <CardContent className="p-4">
+        <Card 
+          className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 cursor-pointer"
+          onClick={() => {
+            setStatusFilter('concluida');
+            setColorFilter('all');
+            setTaskIdFilter(null);
+            setSearchTerm('');
+          }}
+        >
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-success" />
+              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+                <CheckCircle className="h-4 w-4 text-success" />
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-foreground">{stats.concluidas}</div>
-                <div className="text-sm text-muted-foreground">Concluídas</div>
+                <div className="text-xl font-bold text-foreground">{stats.concluidas}</div>
+                <div className="text-xs text-muted-foreground">Concluídas</div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105">
-          <CardContent className="p-4">
+        <Card 
+          className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 cursor-pointer"
+          onClick={() => {
+            setStatusFilter('em_aberto');
+            setColorFilter('urgentesEatrasadas');
+            setTaskIdFilter(null);
+            setSearchTerm('');
+          }}
+        >
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
+              <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-foreground">{stats.urgentes}</div>
-                <div className="text-sm text-muted-foreground">Urgentes</div>
+                <div className="text-xl font-bold text-foreground">{stats.urgentes}</div>
+                <div className="text-xs text-muted-foreground">Urgentes</div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105">
-          <CardContent className="p-4">
+        <Card 
+          className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 cursor-pointer"
+          onClick={() => {
+            setStatusFilter('all');
+            setColorFilter('all');
+            setTaskIdFilter(null);
+            setSearchTerm('');
+          }}
+        >
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
-              <div className="w-10 h-10 rounded-xl bg-terrah-turquoise/10 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-terrah-turquoise" />
+              <div className="w-8 h-8 rounded-lg bg-terrah-turquoise/10 flex items-center justify-center">
+                <FileText className="h-4 w-4 text-terrah-turquoise" />
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-foreground">{stats.total}</div>
-                <div className="text-sm text-muted-foreground">Total</div>
+                <div className="text-xl font-bold text-foreground">{stats.total}</div>
+                <div className="text-xs text-muted-foreground">Total</div>
               </div>
             </div>
           </CardContent>
@@ -648,8 +935,27 @@ export function TaskList() {
             const statusCor = getStatusCor(diasRestantes, tarefa.status);
             const statusLabel = getStatusLabel(diasRestantes);
             const priorityColor = getPriorityColor(diasRestantes);
-            const cardDescription = tarefa.status === 'concluida' ? (tarefa.anotacoes || '-') : tarefa.descricao;
+            const cardDescription = tarefa.descricao;
             const borderClass = getCardBorderClass(tarefa.status, diasRestantes);
+            
+            // Calcular periodicidade e próxima tarefa para tarefas concluídas
+            const tarefaPredefinida = tarefasPredefinidas.find(t => t.id === tarefa.tarefa_predefinida_id);
+            const periodicidade = tarefaPredefinida?.periodicidade;
+            let proximaTarefa: string | undefined;
+            
+            if (tarefa.status === 'concluida' && tarefa.data_conclusao && periodicidade) {
+              const proximaData = calcularProximaData(tarefa.data_conclusao, periodicidade);
+              if (proximaData) {
+                proximaTarefa = proximaData.toISOString().split('T')[0];
+              }
+            }
+            // Usar fotos dummy se necessário
+            const realPhotos = tarefa.fotos ?? [];
+            const dummyPhotos = shouldTaskHavePhotos(tarefa.status, tarefa.id) 
+              ? getDummyPhotosForTask(tarefa.id, 3) 
+              : [];
+            const allPhotos = realPhotos.length > 0 ? realPhotos : dummyPhotos;
+
             return (
               <TaskCard
               key={tarefa.id}
@@ -661,7 +967,7 @@ export function TaskList() {
                 dueDate={tarefa.data_vencimento}
                 property={imoveis.find(i => i.id === tarefa.imovel_id)?.nome || ""}
                 assignee={"-"}
-              photosCount={tarefa.fotos?.length || 0}
+              photosCount={allPhotos.length}
                 responsavel={funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome}
                 anotacoes={tarefa.anotacoes}
                   diasRestantes={diasRestantes}
@@ -676,7 +982,9 @@ export function TaskList() {
                     <Edit className="h-5 w-5" />
                   </Button>
               )}
-              photos={tarefa.fotos ?? []}
+              photos={allPhotos}
+              periodicidade={periodicidade}
+              proximaTarefa={proximaTarefa}
             />
             );
           })}
@@ -710,12 +1018,29 @@ export function TaskList() {
               </select>
             </div>
 
+            {/* Seleção de Tipo de Veículo (se for tarefa de veículo) */}
+            {selectedTarefaPredefinida && isVehicleTask(selectedTarefaPredefinida.titulo) && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tipo de Veículo</label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={tipoVeiculo}
+                  onChange={e => setTipoVeiculo(e.target.value)}
+                  required
+                >
+                  <option value="">Selecione o tipo...</option>
+                  <option value="carro">Carro</option>
+                  <option value="moto">Moto</option>
+                </select>
+              </div>
+            )}
+
             {/* Informações da Tarefa Selecionada */}
             {selectedTarefaPredefinida && (
               <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-terrah-turquoise" />
-                  <span className="font-medium">Periodicidade: {selectedTarefaPredefinida.periodicidade}</span>
+                  <span className="font-medium">Periodicidade: {formatarPeriodicidade(selectedTarefaPredefinida.periodicidade)}</span>
                 </div>
               </div>
             )}
@@ -751,6 +1076,8 @@ export function TaskList() {
             </div>
 
             {/* Selecionar Imóvel */}
+            {/* Seleção de Imóvel (não exibido para tarefas "conforme necessidade") */}
+            {selectedTarefaPredefinida && !isOnDemandTask(selectedTarefaPredefinida.titulo) && (
             <div className="space-y-2">
               <label className="text-sm font-medium">Selecionar Imóvel</label>
               <select
@@ -767,6 +1094,7 @@ export function TaskList() {
                 ))}
               </select>
             </div>
+            )}
 
             {/* Atribuir Responsável (apenas para admin) */}
             {isAdmin && (
@@ -827,6 +1155,31 @@ export function TaskList() {
                   </div>
                 ))}
               </div>
+              
+              {/* Indicador de progresso de upload */}
+              {uploadProgress && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between text-sm text-blue-700 mb-2">
+                    <span>Enviando fotos...</span>
+                    <span>{uploadProgress.current} de {uploadProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Aviso sobre storage */}
+              {!storageHealthy && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800">
+                    ⚠️ Storage não configurado. Configure as variáveis de ambiente para habilitar upload de fotos.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 mt-4">
@@ -903,8 +1256,11 @@ export function TaskList() {
                 accept="image/*"
                 multiple
                 onChange={e => {
-                  const files = Array.from(e.target.files || []).slice(0, 5);
-                  setConclusaoFotos(files);
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 5) {
+                    toast.warning('Máximo de 5 fotos permitidas. Selecionando as primeiras 5.');
+                  }
+                  setConclusaoFotos(files.slice(0, 5));
                 }}
               />
               <div className="flex gap-2 flex-wrap mt-2">
@@ -914,14 +1270,66 @@ export function TaskList() {
               </div>
             </div>
             <div className="flex gap-2 mt-4">
-              <Button type="submit" className="flex-1" >
-                Concluir
+              <Button 
+                type="submit" 
+                className="flex-1" 
+                disabled={concludingTask}
+              >
+                {concludingTask && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {concludingTask ? "Concluindo..." : "Concluir"}
               </Button>
-              <Button type="button" variant="outline" className="flex-1" onClick={closeStartModal}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="flex-1" 
+                onClick={closeStartModal}
+                disabled={concludingTask}
+              >
                 Cancelar
               </Button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Excluir Tarefa</h3>
+                <p className="text-sm text-gray-600">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 mb-6">
+              Tem certeza que deseja remover esta tarefa?
+            </p>
+            
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                className="flex-1" 
+                onClick={closeDeleteModal}
+                disabled={deletingTask}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="flex-1" 
+                onClick={confirmDelete}
+                disabled={deletingTask}
+              >
+                {deletingTask && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {deletingTask ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -424,7 +424,13 @@ const statsData = [
     bg: "bg-terrah-orange/10",
       trend: stats.tarefasCriadasHoje > 0 ? `+${stats.tarefasCriadasHoje}` : "0",
     trendUp: stats.tarefasCriadasHoje > 0,
-    onClick: () => handleOpenReportModal('pendentes'),
+    onClick: () => {
+      window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('clearTaskIdFilter'));
+        window.dispatchEvent(new CustomEvent('setStatusFilter', { detail: 'em_aberto' }));
+      }, 100);
+    },
   },
   {
       title: getPeriodoStatsLabel(),
@@ -434,7 +440,14 @@ const statsData = [
     bg: "bg-terrah-turquoise/10",
       trend: stats.tarefasConcluidasHoje > 0 ? `+${stats.tarefasConcluidasHoje}` : "0",
     trendUp: true,
-    onClick: () => handleOpenReportModal('concluidas'),
+    onClick: () => {
+      window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('clearTaskIdFilter'));
+        window.dispatchEvent(new CustomEvent('setTaskColorFilter', { detail: 'all' }));
+        window.dispatchEvent(new CustomEvent('setStatusFilter', { detail: 'concluida' }));
+      }, 100);
+    },
     }
   ];
 
