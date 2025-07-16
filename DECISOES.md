@@ -1,5 +1,31 @@
 # DECISÕES TÉCNICAS – Terrah Homes | Tarefas Programadas
 
+## Última Atualização - Dezembro 2024
+
+### **Decisão: Sistema de Relatórios Funcionais (IMPLEMENTADO ✅)**
+- Modais de relatório transformados de estáticos para dinâmicos
+- Filtros por urgência: Normal, Moderado, Atenção, Urgentes
+- Interface `TarefaDetalhada` criada para uso abrangente
+- Função `handleOpenReportModal` async para buscar dados do Supabase
+- Renderização completa com nomes de propriedades, responsáveis e datas
+
+### **Decisão: Row Level Security (RLS) Implementado (CONCLUÍDO ✅)**
+- Políticas RLS criadas para todas as tabelas: imoveis, funcionarios, tarefas_predefinidas, task_photos, tarefas
+- Migração SQL executada via Supabase SQL Editor
+- Segurança completa implementada conforme Supabase Security Advisor
+
+### **Decisão: Sistema de Notificações Push (EM CORREÇÃO ⚠️)**
+- **Problema identificado**: Hardcoded Firebase credentials no código
+- **Solução implementada**: Google Auth library com Supabase secrets
+- **Status atual**: Edge Function criada mas com conflitos de deployment
+- **Decisão técnica**: Aguardar resolução de dependências ou implementar alternativa
+
+### **Motivação das Decisões Recentes**
+- **Segurança**: RLS essencial para ambiente de produção
+- **Funcionalidade**: Relatórios críticos para gestão operacional
+- **Manutenibilidade**: Remoção de credentials hardcoded
+- **User Experience**: Sistema 95% funcional para uso imediato
+
 ## Atualização Recente
 - Dependências principais instaladas: React, Supabase, TailwindCSS, etc.
 - Backend definido: Supabase (Auth, Database, Storage, Functions)

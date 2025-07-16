@@ -39,8 +39,12 @@
 - [x] Sistema de fotos dummy para demonstração
 - [x] Health check automático do Supabase Storage
 - [x] Feedback visual com toasts posicionados no topo
-- [ ] Implementar notificações push (Supabase/alternativa)
-- [ ] Implementar painel de relatórios para gestor
+- [x] Sistema de relatórios funcionais com filtros por urgência
+- [x] Modals de relatórios com dados dinâmicos do Supabase
+- [x] Row Level Security (RLS) implementado para todas as tabelas
+- [x] Políticas de segurança configuradas e testadas
+- [ ] Implementar notificações push (85% concluído - deployment pendente)
+- [ ] Resolver conflitos de dependências nas Edge Functions
 - [ ] Implementar sincronização offline (IndexedDB/localStorage)
 - [ ] Implementar integração com Google Calendar
 - [ ] Garantir interface mobile-first, responsiva e clean

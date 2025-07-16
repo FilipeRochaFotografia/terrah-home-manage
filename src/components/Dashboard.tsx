@@ -32,8 +32,8 @@ interface AtividadeRecente {
   status?: string;
 }
 
-// Ajustar tipo temporário para TarefaUrgente para incluir imovel_id e responsavel_id
-interface TarefaUrgente {
+// Renomeado e expandido para ser mais genérico
+interface TarefaDetalhada {
   id: string;
   titulo: string;
   data_vencimento: string;
@@ -42,6 +42,7 @@ interface TarefaUrgente {
   diasRestantes: number;
   imovel?: string;
   responsavel?: string;
+  status?: string;
 }
 
 export function Dashboard() {
@@ -59,7 +60,7 @@ export function Dashboard() {
     tarefasAtrasadasRelatorio: 0
   });
   const [atividadesRecentes, setAtividadesRecentes] = useState<AtividadeRecente[]>([]);
-  const [tarefasUrgentes, setTarefasUrgentes] = useState<TarefaUrgente[]>([]);
+  const [tarefasUrgentes, setTarefasUrgentes] = useState<TarefaDetalhada[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [alertas, setAlertas] = useState<{tipo: 'atraso' | 'urgente' | 'pendente', mensagem: string, count: number}[]>([]);
@@ -67,7 +68,7 @@ export function Dashboard() {
   const isMobile = useIsMobile();
   const [imoveis, setImoveis] = useState<{id: string, nome: string}[]>([]);
   const [funcionarios, setFuncionarios] = useState<{id: string, nome: string, user_id: string}[]>([]);
-  const [tarefasUrgentesRaw, setTarefasUrgentesRaw] = useState<TarefaUrgente[]>([]);
+  const [tarefasUrgentesRaw, setTarefasUrgentesRaw] = useState<TarefaDetalhada[]>([]);
   const [alertasFechados, setAlertasFechados] = useState<string[]>(() => {
     const saved = sessionStorage.getItem('alertasFechados');
     return saved ? JSON.parse(saved) : [];
@@ -76,9 +77,14 @@ export function Dashboard() {
   const [reportModalTitle, setReportModalTitle] = useState(''); // Added state for modal
   const [reportModalCount, setReportModalCount] = useState(0); // Added state for modal
   const [reportModalColor, setReportModalColor] = useState(''); // Added state for modal
+  const [reportTasks, setReportTasks] = useState<TarefaDetalhada[]>([]); // Estado para as tarefas do relatório
+  const [loadingReport, setLoadingReport] = useState(false); // Estado de loading para o modal
+
 
   useEffect(() => {
     fetchDashboardData();
+    // fetchAtividadesRecentes(); // Comentado para evitar erro 400
+
     // Buscar imóveis e funcionários
     async function fetchImoveis() {
       const { data } = await supabase.from("imoveis").select("id, nome");
@@ -186,7 +192,7 @@ export function Dashboard() {
         .eq('ativo', true);
 
       // Buscar tarefas pendentes para análise de prazo (INCLUIR atrasadas)
-      const { data: tarefasPendentes } = await supabase
+      const { data: tarefasPendentesUrgentes, error: tarefasError } = await supabase
         .from('tarefas')
         .select(`
           id,
@@ -195,43 +201,31 @@ export function Dashboard() {
           imovel_id,
           responsavel_id
         `)
+        .eq('status', 'em_aberto')
+        .lte('data_vencimento', new Date(new Date().setDate(new Date().getDate() + 5)).toISOString()) // Pega tarefas que vencem em até 5 dias
+        .order('data_vencimento', { ascending: true }) // Ordena pelas mais antigas primeiro
+        .limit(3); // Limita aos 3 resultados
+
+      if (tarefasError) {
+        console.error("Erro ao buscar tarefas urgentes:", tarefasError);
+      }
+
+      const { data: todasTarefasPendentes } = await supabase
+        .from('tarefas')
+        .select(`id, data_vencimento`)
         .eq('status', 'em_aberto');
 
-      // LOG TEMPORÁRIO PARA DEBUG
-      console.log('tarefasPendentes:', tarefasPendentes);
-
-      // Analisar prazos das tarefas
+      // Analisar prazos de TODAS as tarefas pendentes para os contadores
       let urgentes = 0, atencao = 0, moderadas = 0, normais = 0, atrasadasRelatorio = 0;
-      const tarefasUrgentesList: TarefaUrgente[] = [];
 
-      if (tarefasPendentes) {
-        tarefasPendentes.forEach(tarefa => {
+      if (todasTarefasPendentes) {
+        todasTarefasPendentes.forEach(tarefa => {
           const diasRestantes = calcularDiasRestantes(tarefa.data_vencimento);
-
           if (diasRestantes < 0) {
             atrasadasRelatorio++;
-            if (tarefasUrgentesList.length < 5) {
-              tarefasUrgentesList.push({
-                id: tarefa.id,
-                titulo: tarefa.titulo,
-                data_vencimento: tarefa.data_vencimento,
-                imovel_id: tarefa.imovel_id,
-                responsavel_id: tarefa.responsavel_id,
-                diasRestantes
-              });
-            }
+            urgentes++;
           } else if (diasRestantes <= 5) {
             urgentes++;
-            if (tarefasUrgentesList.length < 5) { // Mostrar apenas as 5 mais urgentes/atrasadas
-              tarefasUrgentesList.push({
-                id: tarefa.id,
-                titulo: tarefa.titulo,
-                data_vencimento: tarefa.data_vencimento,
-                imovel_id: tarefa.imovel_id,
-                responsavel_id: tarefa.responsavel_id,
-                diasRestantes
-              });
-            }
           } else if (diasRestantes <= 14) {
             atencao++;
           } else if (diasRestantes <= 29) {
@@ -241,6 +235,16 @@ export function Dashboard() {
           }
         });
       }
+
+      // A lista de tarefas urgentes para exibição é a que já foi limitada
+      const tarefasUrgentesList: TarefaDetalhada[] = tarefasPendentesUrgentes?.map(tarefa => ({
+        id: tarefa.id,
+        titulo: tarefa.titulo,
+        data_vencimento: tarefa.data_vencimento,
+        imovel_id: tarefa.imovel_id,
+        responsavel_id: tarefa.responsavel_id,
+        diasRestantes: calcularDiasRestantes(tarefa.data_vencimento)
+      })) || [];
 
       setStats({
         tarefasPendentes: pendentes || 0,
@@ -499,26 +503,84 @@ const statsData = [
   }
 
   // Ajustar handleOpenReportModal para aceitar 'pendentes' e 'concluidas'
-  function handleOpenReportModal(type: 'pendentes' | 'concluidas') {
+  async function handleOpenReportModal(type: 'pendentes' | 'concluidas' | 'normal' | 'moderado' | 'atencao' | 'urgente') {
+    setLoadingReport(true);
+    setShowReportModal(true);
+
     let title = '';
-    let count = 0;
     let color = '';
+    let minDays = 0;
+    let maxDays = Infinity;
+
     switch (type) {
-      case 'pendentes':
-        title = 'Tarefas Pendentes';
-        count = stats.tarefasPendentes;
-        color = 'bg-terrah-orange';
+      case 'normal':
+        title = 'Tarefas Normais';
+        color = 'bg-green-500';
+        minDays = 30;
         break;
-      case 'concluidas':
-        title = getPeriodoStatsLabel();
-        count = stats.tarefasConcluidasHoje;
-        color = 'bg-terrah-turquoise';
+      case 'moderado':
+        title = 'Tarefas Moderadas';
+        color = 'bg-yellow-500';
+        minDays = 15;
+        maxDays = 29;
+        break;
+      case 'atencao':
+        title = 'Tarefas que Requerem Atenção';
+        color = 'bg-orange-500';
+        minDays = 6;
+        maxDays = 14;
+        break;
+      case 'urgente':
+        title = 'Tarefas Urgentes';
+        color = 'bg-red-500';
+        maxDays = 5;
+        minDays = -Infinity; // Inclui atrasadas
         break;
     }
+
     setReportModalTitle(title);
-    setReportModalCount(count);
     setReportModalColor(color);
-    setShowReportModal(true);
+    
+    // Buscar as tarefas correspondentes
+    const hoje = new Date();
+    const dataMin = new Date(hoje);
+    dataMin.setDate(hoje.getDate() + minDays);
+    
+    const dataMax = new Date(hoje);
+    if(maxDays !== Infinity) {
+      dataMax.setDate(hoje.getDate() + maxDays);
+    }
+
+    const query = supabase
+      .from('tarefas')
+      .select('id, titulo, data_vencimento, imovel_id, responsavel_id, status')
+      .eq('status', 'em_aberto');
+
+    if (minDays !== -Infinity) {
+      query.gte('data_vencimento', dataMin.toISOString().split('T')[0]);
+    }
+    if (maxDays !== Infinity) {
+      query.lte('data_vencimento', dataMax.toISOString().split('T')[0]);
+    }
+    
+    const { data: tarefas, error } = await query;
+    
+    if (error) {
+      console.error(`Erro ao buscar tarefas para o relatório '${type}':`, error);
+      setLoadingReport(false);
+      return;
+    }
+    
+    const tarefasDetalhadas: TarefaDetalhada[] = tarefas.map(t => ({
+      ...t,
+      imovel: imoveis.find(i => i.id === t.imovel_id)?.nome || 'N/A',
+      responsavel: funcionarios.find(f => f.user_id === t.responsavel_id)?.nome || 'N/A',
+      diasRestantes: calcularDiasRestantes(t.data_vencimento),
+    }));
+
+    setReportTasks(tarefasDetalhadas);
+    setReportModalCount(tarefasDetalhadas.length);
+    setLoadingReport(false);
   }
 
   function handleCloseReportModal() {
@@ -526,6 +588,7 @@ const statsData = [
     setReportModalTitle('');
     setReportModalCount(0);
     setReportModalColor('');
+    setReportTasks([]);
   }
 
   return (
@@ -715,22 +778,53 @@ const statsData = [
               <div className="text-sm text-muted-foreground">Atenção (6-14 dias)</div>
             </div>
             <div className="text-center p-4 rounded-lg bg-red-50 border border-red-200 cursor-pointer" onClick={() => handleOpenReportModal('urgente')}>
-              <div className="text-2xl font-bold text-red-600">{(stats.tarefasUrgentes + (stats.tarefasAtrasadasRelatorio || 0))}</div>
+              <div className="text-2xl font-bold text-red-600">{stats.tarefasUrgentes}</div>
               <div className="text-sm text-muted-foreground">Urgentes (≤5 dias)</div>
             </div>
           </div>
         </CardContent>
       </Card>
-      {/* Modal de relatório (estrutura inicial) */}
-      <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
-        <DialogContent>
-          <div className="flex flex-col items-center justify-center p-8">
-            <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 ${reportModalColor}`}>
-              <span className="text-5xl font-bold text-white">{reportModalCount}</span>
+      
+      {/* Modal de relatório */}
+      <Dialog open={showReportModal} onOpenChange={handleCloseReportModal}>
+        <DialogContent className="max-w-3xl">
+          <div className="p-2">
+            <div className="flex items-center gap-4 mb-6">
+               <div className={`w-16 h-16 rounded-full flex items-center justify-center ${reportModalColor}`}>
+                 <span className="text-3xl font-bold text-white">{reportModalCount}</span>
+               </div>
+              <DialogTitle className="text-2xl font-bold">{reportModalTitle}</DialogTitle>
             </div>
-            <DialogTitle className="text-2xl font-bold mb-2">{reportModalTitle}</DialogTitle>
-            {/* Aqui virão as informações detalhadas do relatório */}
-            <div className="mt-4">Em breve: detalhes das tarefas deste grupo.</div>
+            
+            {loadingReport ? (
+              <div className="text-center p-8">Carregando tarefas...</div>
+            ) : (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-4">
+                {reportTasks.length > 0 ? (
+                  reportTasks.map(tarefa => (
+                    <div 
+                      key={tarefa.id}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{tarefa.titulo}</p>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                          <span><MapPin className="h-3 w-3 inline mr-1"/>{tarefa.imovel}</span>
+                          <span><UserCheck className="h-3 w-3 inline mr-1"/>{tarefa.responsavel}</span>
+                          <Badge variant="outline" className={getStatusCor(tarefa.diasRestantes)}>
+                            {tarefa.diasRestantes < 0 
+                              ? `Atrasada ${-tarefa.diasRestantes}d` 
+                              : `Vence em ${tarefa.diasRestantes}d`}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground p-8">Nenhuma tarefa encontrada para este critério.</div>
+                )}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

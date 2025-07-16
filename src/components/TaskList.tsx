@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useRef } from 'react';
 import { calcularProximaData, formatarPeriodicidade, validarPeriodicidade, migrarPeriodicidadeParaNovoFormato } from "@/lib/utils";
 import { uploadMultiplePhotos, checkStorageHealth } from "@/lib/photoUpload";
+import { notifyTaskAssigned } from "@/lib/notifications"; // Adicionar esta import
 import { getDummyPhotosForTask, shouldTaskHavePhotos } from "@/data/dummyPhotos";
 
 interface TarefaPredefinida {
@@ -393,8 +394,11 @@ export function TaskList() {
       fotos: fotosUrls // sempre array, mesmo vazio
     };
     
+    let tarefaId: string;
+    
     if (editTarefa) {
       await supabase.from("tarefas").update(tarefaData).eq("id", editTarefa.id);
+      tarefaId = editTarefa.id;
     } else {
       // 1. Cria a tarefa sem fotos
       const { data: insertData, error: insertError } = await supabase.from("tarefas").insert({
@@ -421,6 +425,8 @@ export function TaskList() {
         setSaving(false);
         return;
       }
+      tarefaId = newId;
+      
       let fotosUrls: string[] = [];
       if (editNovasFotos.length > 0 && newId) {
         if (!storageHealthy) {
@@ -452,6 +458,35 @@ export function TaskList() {
         await supabase.from("tarefas").update({ fotos: fotosUrls }).eq("id", newId);
       }
     }
+    
+    // **NOVA FUNCIONALIDADE: Enviar notificação se a tarefa foi atribuída**
+    if (responsavelId) {
+      console.log('=== DEBUG NOTIFICAÇÃO ===');
+      console.log('ResponsavelId:', responsavelId);
+      console.log('TarefaId:', tarefaId);
+      console.log('TituloFinal:', tituloFinal);
+      
+      try {
+        console.log('Chamando notifyTaskAssigned...');
+        const notificationResult = await notifyTaskAssigned(responsavelId, tarefaId, tituloFinal);
+        
+        console.log('Resultado da notificação:', notificationResult);
+        
+        if (notificationResult.success) {
+          console.log('Notificação enviada com sucesso!');
+          toast.success('Tarefa criada e funcionário notificado!');
+        } else {
+          console.warn('Falha ao enviar notificação:', notificationResult.error);
+          toast.warning('Tarefa criada, mas notificação não foi enviada.');
+        }
+      } catch (error) {
+        console.error('Erro ao enviar notificação:', error);
+        toast.error('Erro ao enviar notificação: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+      }
+    } else {
+      console.log('Nenhum responsável selecionado, não enviando notificação');
+    }
+    
     setSaving(false);
     closeForm();
     fetchTarefas();
@@ -1118,69 +1153,74 @@ export function TaskList() {
               </div>
             )}
 
-            {/* Galeria de fotos já anexadas */}
-            {editFotos.length > 0 && (
-              <div className="flex gap-2 flex-wrap mb-2">
-                {editFotos.map((url, idx) => (
-                  <div key={idx} className="relative group">
-                    <img src={url} alt={`Foto ${idx+1}`} className="w-16 h-16 object-cover rounded border" />
-                    <button type="button" onClick={() => setEditFotos(editFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
+            {/* Apenas mostra a opção de fotos se estiver editando uma tarefa */}
+            {editTarefa && (
+              <>
+                {/* Galeria de fotos já anexadas */}
+                {editFotos.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {editFotos.map((url, idx) => (
+                      <div key={idx} className="relative group">
+                        <img src={url} alt={`Foto ${idx+1}`} className="w-16 h-16 object-cover rounded border" />
+                        <button type="button" onClick={() => setEditFotos(editFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+                {/* Upload de novas fotos */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    Adicionar Fotos (até {5 - editFotos.length} novas)
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={editFotos.length + editNovasFotos.length >= 5}
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []).slice(0, 5 - editFotos.length - editNovasFotos.length);
+                      setEditNovasFotos([...editNovasFotos, ...files]);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                  />
+                  <div className="flex gap-2 flex-wrap mt-2">
+                    {editNovasFotos.map((file, idx) => (
+                      <div key={idx} className="relative group">
+                        <img src={URL.createObjectURL(file)} alt="preview" className="w-16 h-16 object-cover rounded border" />
+                        <button type="button" onClick={() => setEditNovasFotos(editNovasFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Indicador de progresso de upload */}
+                  {uploadProgress && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between text-sm text-blue-700 mb-2">
+                        <span>Enviando fotos...</span>
+                        <span>{uploadProgress.current} de {uploadProgress.total}</span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                          style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Aviso sobre storage */}
+                  {!storageHealthy && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-sm text-yellow-800">
+                        ⚠️ Storage não configurado. Configure as variáveis de ambiente para habilitar upload de fotos.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
-            {/* Upload de novas fotos */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Camera className="h-4 w-4" />
-                Adicionar Fotos (até {5 - editFotos.length} novas)
-              </label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                disabled={editFotos.length + editNovasFotos.length >= 5}
-                onChange={e => {
-                  const files = Array.from(e.target.files || []).slice(0, 5 - editFotos.length - editNovasFotos.length);
-                  setEditNovasFotos([...editNovasFotos, ...files]);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }}
-              />
-              <div className="flex gap-2 flex-wrap mt-2">
-                {editNovasFotos.map((file, idx) => (
-                  <div key={idx} className="relative group">
-                    <img src={URL.createObjectURL(file)} alt="preview" className="w-16 h-16 object-cover rounded border" />
-                    <button type="button" onClick={() => setEditNovasFotos(editNovasFotos.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100">×</button>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Indicador de progresso de upload */}
-              {uploadProgress && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between text-sm text-blue-700 mb-2">
-                    <span>Enviando fotos...</span>
-                    <span>{uploadProgress.current} de {uploadProgress.total}</span>
-                  </div>
-                  <div className="w-full bg-blue-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                      style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Aviso sobre storage */}
-              {!storageHealthy && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-sm text-yellow-800">
-                    ⚠️ Storage não configurado. Configure as variáveis de ambiente para habilitar upload de fotos.
-                  </p>
-                </div>
-              )}
-            </div>
 
             <div className="flex gap-2 mt-4">
               <Button type="submit" className="flex-1" disabled={saving}>

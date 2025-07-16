@@ -82,6 +82,7 @@ export function TaskCard({
 }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const mappedStatus = mapStatus(status);
   
   const statusValue = statusConfig[mappedStatus] || statusConfig["pending"];
@@ -108,6 +109,11 @@ export function TaskCard({
 
   const handleToggleExpand = () => {
     setExpanded(!expanded);
+  };
+
+  const handlePhotoClick = (index: number) => {
+    setSelectedPhotoIndex(index);
+    setPhotoModalOpen(true);
   };
 
   return (
@@ -229,14 +235,18 @@ export function TaskCard({
                         src={url} 
                         alt={`Foto ${idx+1}`} 
                         className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" 
-                        onClick={() => {
-                          setPhotoModalOpen(true);
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePhotoClick(idx);
                         }}
                       />
                       {idx === 3 && photos.length > 4 && (
                         <div 
                           className="absolute inset-0 bg-black/60 flex items-center justify-center rounded cursor-pointer"
-                          onClick={() => setPhotoModalOpen(true)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePhotoClick(4);
+                          }}
                         >
                           <span className="text-white text-sm font-bold">+{photos.length - 4}</span>
                         </div>
@@ -337,15 +347,15 @@ export function TaskCard({
           </div>
         </div>
       </CardContent>
-    </Card>
+      </Card>
 
-    {/* Photo Gallery Modal */}
-    <PhotoGallery
-      photos={photos}
-      isOpen={photoModalOpen}
-      onClose={() => setPhotoModalOpen(false)}
-      taskTitle={title}
-    />
+      <PhotoGallery 
+        isOpen={photoModalOpen}
+        onClose={() => setPhotoModalOpen(false)}
+        photos={photos}
+        initialIndex={selectedPhotoIndex}
+        taskTitle={title}
+      />
     </>
   );
 }

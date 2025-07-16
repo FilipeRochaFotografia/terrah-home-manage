@@ -5,10 +5,11 @@ import { supabase } from "@/lib/supabaseClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useNotifications } from "@/hooks/useNotifications"; // 1. Importar o hook
 
 export function Header() {
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificacoes, setNotificacoes] = useState([]);
+  const [notificacoes, setNotificacoes] = useState<any[]>([]); // Tipagem mais específica seria melhor
   const [loading, setLoading] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
@@ -19,11 +20,17 @@ export function Header() {
   const [exportType, setExportType] = useState<string>("");
   const [userInfo, setUserInfo] = useState<{nome: string, email: string, isAdmin: boolean} | null>(null);
 
+  // 2. Chamar o hook
+  const { requestPermissionAndGetToken, isProcessing } = useNotifications();
+
   // State para notificações lidas por sessão
   const [notificacoesLidas, setNotificacoesLidas] = useState(() => {
     const saved = sessionStorage.getItem('notificacoesLidas');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Flag para controlar se já solicitou permissão
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   // Função para buscar notificações
   const buscarNotificacoes = async () => {
@@ -87,23 +94,45 @@ export function Header() {
 
   useEffect(() => {
     async function fetchUserInfo() {
+      if (permissionRequested) return; // Evitar chamadas múltiplas
+
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Buscar dados extras na tabela funcionarios
-        const { data: funcionarios } = await supabase
+        // Buscar dados extras na tabela funcionarios primeiro
+        const { data: funcionarioData, error: funcionarioError } = await supabase
           .from('funcionarios')
           .select('nome, email, is_admin')
           .eq('user_id', user.id)
           .maybeSingle();
+
+        if (funcionarioError) {
+          console.error("Erro ao buscar dados do funcionário:", funcionarioError);
+        }
+        
         setUserInfo({
-          nome: funcionarios?.nome || user.user_metadata?.name || 'Usuário',
-          email: funcionarios?.email || user.email,
-          isAdmin: !!funcionarios?.is_admin
+          nome: funcionarioData?.nome || user.user_metadata?.name || 'Usuário',
+          email: funcionarioData?.email || user.email || '',
+          isAdmin: !!funcionarioData?.is_admin
         });
+
+        // Também setar o estado de isAdmin para controle de acesso
+        setIsAdmin(!!funcionarioData?.is_admin);
+
+        // 3. Solicitar permissão de notificação apenas uma vez
+        if (!isProcessing) {
+          setPermissionRequested(true);
+          setTimeout(() => {
+            requestPermissionAndGetToken(user.id);
+          }, 1000); // Atraso para evitar problemas de inicialização
+        }
+        
+      } else {
+        // Se não houver usuário, redirecionar para o login
+        window.location.href = "/login";
       }
     }
     fetchUserInfo();
-  }, []);
+  }, []); // Remover dependências para executar apenas uma vez
 
   // Função de logout
   async function handleLogout() {
@@ -230,19 +259,23 @@ export function Header() {
                       key={n.id}
                       className="border rounded-lg p-3 flex flex-col gap-1 bg-terrah-orange/5 cursor-pointer hover:bg-terrah-orange/10 transition"
                       onClick={() => {
+                        // Oculta o modal de notificações
                         setShowNotifications(false);
-                        setNotificacoes(prev => prev.filter(notif => notif.id !== n.id));
+                        
+                        // Atualiza a lista de notificações lidas na sessão
                         setNotificacoesLidas(prev => {
                           const updated = [...prev, n.id];
                           sessionStorage.setItem('notificacoesLidas', JSON.stringify(updated));
                           return updated;
                         });
-                        // Navegar para a aba de tarefas e filtrar pela tarefa
-                        const event = new CustomEvent('navigateToTab', { detail: 'tasks' });
-                        window.dispatchEvent(event);
+                        
+                        // Remove a notificação clicada da lista visível
+                        setNotificacoes(prev => prev.filter(notif => notif.id !== n.id));
+
+                        // Navega para a aba de tarefas e filtra pela tarefa específica
+                        window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
                         setTimeout(() => {
-                          const filterEvent = new CustomEvent('setTaskColorFilter', { detail: n.tipo.startsWith('Atrasada') ? 'atrasada' : 'urgente' });
-                          window.dispatchEvent(filterEvent);
+                          window.dispatchEvent(new CustomEvent('filterTasksById', { detail: n.id }));
                         }, 100);
                       }}
                     >

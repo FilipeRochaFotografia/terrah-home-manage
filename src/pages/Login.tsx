@@ -27,7 +27,8 @@ export default function Login() {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center animate-in fade-in duration-500">
         <img src="/lovable-uploads/logo.png" alt="Logo Terrah Homes" className="h-16 mb-4" />
         <h1 className="text-2xl font-bold text-terrah-orange mb-1">Terrah Homes</h1>
-        <p className="text-sm text-muted-foreground mb-6">Acesse sua conta</p>
+        <p className="text-md text-muted-foreground">Aluguel de Temporada</p>
+        <p className="text-sm text-muted-foreground mb-6 mt-4">Acesse sua conta</p>
         <form onSubmit={handleLogin} className="w-full flex flex-col gap-4">
           <Input
             type="email"
