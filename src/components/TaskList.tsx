@@ -719,9 +719,6 @@ export function TaskList() {
           <h1 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
           Tarefas
           </h1>
-          <Badge variant="secondary" className="text-xs">
-            {stats.total} tarefa{stats.total !== 1 ? 's' : ''}
-          </Badge>
         </div>
         
         <div className="flex items-center gap-2">
