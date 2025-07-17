@@ -725,8 +725,14 @@ const statsData = useMemo(() => [
         </Card>
       )}
 
-      {/* Relatórios */}
-      <Card className="hover:shadow-lg transition-all duration-300">
+      {/* Card de Relatórios */}
+      <Card 
+        className="hover:shadow-lg transition-all duration-300 cursor-pointer group"
+        onClick={() => {
+          const event: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'reports' });
+          window.dispatchEvent(event);
+        }}
+      >
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-terrah-turquoise" />
@@ -734,22 +740,25 @@ const statsData = useMemo(() => [
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 rounded-lg bg-green-50 border border-green-200 cursor-pointer" onClick={() => handleOpenReportModal('normal')}>
-              <div className="text-2xl font-bold text-green-600">{stats.tarefasNormais}</div>
-              <div className="text-sm text-muted-foreground">Normal (30+ dias)</div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Visão geral do status de todas as tarefas pendentes.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200">
+              <div className="text-xl font-bold text-red-600">{stats.tarefasUrgentes}</div>
+              <div className="text-xs text-muted-foreground">Urgentes</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-yellow-50 border border-yellow-200 cursor-pointer" onClick={() => handleOpenReportModal('moderado')}>
-              <div className="text-2xl font-bold text-yellow-600">{stats.tarefasModeradas}</div>
-              <div className="text-sm text-muted-foreground">Moderado (15-29 dias)</div>
+            <div className="p-2 rounded-lg bg-orange-50 border border-orange-200">
+              <div className="text-xl font-bold text-orange-600">{stats.tarefasAtencao}</div>
+              <div className="text-xs text-muted-foreground">Atenção</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-orange-50 border border-orange-200 cursor-pointer" onClick={() => handleOpenReportModal('atencao')}>
-              <div className="text-2xl font-bold text-orange-600">{stats.tarefasAtencao}</div>
-              <div className="text-sm text-muted-foreground">Atenção (6-14 dias)</div>
+            <div className="p-2 rounded-lg bg-yellow-50 border border-yellow-200">
+              <div className="text-xl font-bold text-yellow-600">{stats.tarefasModeradas}</div>
+              <div className="text-xs text-muted-foreground">Moderado</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-red-50 border border-red-200 cursor-pointer" onClick={() => handleOpenReportModal('urgente')}>
-              <div className="text-2xl font-bold text-red-600">{stats.tarefasUrgentes}</div>
-              <div className="text-sm text-muted-foreground">Urgentes (≤5 dias)</div>
+            <div className="p-2 rounded-lg bg-green-50 border border-green-200">
+              <div className="text-xl font-bold text-green-600">{stats.tarefasNormais}</div>
+              <div className="text-xs text-muted-foreground">Normal</div>
             </div>
           </div>
         </CardContent>

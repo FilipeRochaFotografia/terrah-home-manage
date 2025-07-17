@@ -1,6 +1,6 @@
 // Tipos para eventos customizados usados no projeto
 
-export type TabName = 'dashboard' | 'tasks' | 'properties' | 'employees';
+export type TabName = 'dashboard' | 'tasks' | 'properties' | 'employees' | 'reports';
 export interface NavigateToTabEvent extends CustomEvent<TabName> {}
 
 export interface OpenTaskModalEvent extends CustomEvent<void> {}
