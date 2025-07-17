@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash2, List, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Edit, Trash2, List, History, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import type { NavigateToTabEvent, FilterTasksByIdEvent, FilterTasksByPropertyEvent } from "@/types/events";
+import { toast } from "sonner";
 
 interface Imovel {
   id: string;
@@ -21,6 +23,63 @@ interface TarefaCompacta {
   status: string;
 }
 
+// Funções utilitárias copiadas do FuncionariosList para colorir e rotular tarefas
+function getPrioridadeColor(diasRestantes: number): string {
+  if (diasRestantes < 0) return "border-l-red-500 bg-red-50"; // Atrasada
+  if (diasRestantes <= 5) return "border-l-red-500 bg-red-50"; // Urgente
+  if (diasRestantes <= 14) return "border-l-orange-500 bg-orange-50"; // Atenção
+  if (diasRestantes <= 29) return "border-l-yellow-500 bg-yellow-50"; // Moderado
+  return "border-l-green-500 bg-green-50"; // Normal
+}
+
+function getPrioridadeLabel(diasRestantes: number): string {
+  if (diasRestantes < 0) return "Urgente";
+  if (diasRestantes === 0) return "Hoje";
+  if (diasRestantes === 1) return "Amanhã";
+  if (diasRestantes <= 5) return "Próximos dias";
+  if (diasRestantes <= 14) return "Atenção";
+  if (diasRestantes <= 29) return "Moderado";
+  return "Normal";
+}
+
+function getPrioridadeBadgeColor(diasRestantes: number): string {
+  if (diasRestantes < 0) return "bg-red-100 text-red-800 border-red-200";
+  if (diasRestantes <= 5) return "bg-red-100 text-red-800 border-red-200";
+  if (diasRestantes <= 14) return "bg-orange-100 text-orange-800 border-orange-200";
+  if (diasRestantes <= 29) return "bg-yellow-100 text-yellow-800 border-yellow-200";
+  return "bg-green-100 text-green-800 border-green-200";
+}
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case "em_aberto":
+      return "bg-muted text-muted-foreground";
+    case "em_andamento":
+      return "bg-terrah-turquoise/20 text-terrah-turquoise";
+    case "concluida":
+      return "bg-success/20 text-success";
+    case "pausada":
+      return "bg-warning/20 text-warning";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function getStatusLabel(status: string) {
+  switch (status) {
+    case "em_aberto":
+      return "Em Aberto";
+    case "em_andamento":
+      return "Em Andamento";
+    case "concluida":
+      return "Concluída";
+    case "pausada":
+      return "Pausada";
+    default:
+      return "Em Aberto";
+  }
+}
+
 export function PropertyList() {
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +95,40 @@ export function PropertyList() {
   const [expandedImovel, setExpandedImovel] = useState<{id: string, tipo: 'pendentes' | 'historico'} | null>(null);
   const [tarefasPorImovel, setTarefasPorImovel] = useState<Record<string, {pendentes?: TarefaCompacta[], historico?: TarefaCompacta[]}>>({});
   const [loadingTarefas, setLoadingTarefas] = useState<{id: string, tipo: 'pendentes' | 'historico'} | null>(null);
+  // Estado para controlar quantas tarefas mostrar por imóvel
+  const [tarefasVisiveis, setTarefasVisiveis] = useState<Record<string, number>>({});
+  // Adicionar logo após os hooks de estado:
+  const statusOptions = [
+    { key: 'todas', label: 'Todas' },
+    { key: 'em_aberto', label: 'Em Aberto' },
+    { key: 'em_andamento', label: 'Em Andamento' },
+    { key: 'concluida', label: 'Concluídas' },
+    { key: 'atrasadas', label: 'Atrasadas' },
+  ];
+  // Estado para filtro de status por imóvel/aba
+  const [filtroStatus, setFiltroStatus] = useState<Record<string, string>>({});
+
+  // Função para filtrar tarefas por status
+  function filtrarTarefasStatus(tarefas: TarefaCompacta[], status: string) {
+    if (!status || status === 'todas') return tarefas;
+    if (status === 'atrasadas') {
+      return tarefas.filter(t => {
+        const dias = calcularDiasRestantes(t.data_vencimento);
+        return dias < 0;
+      });
+    }
+    return tarefas.filter(t => t.status === status);
+  }
+
+  // Função para calcular dias restantes (igual FuncionariosList)
+  function calcularDiasRestantes(dataVencimento: string): number {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const vencimento = new Date(dataVencimento);
+    vencimento.setHours(0, 0, 0, 0);
+    const diffTime = vencimento.getTime() - hoje.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
@@ -46,9 +139,16 @@ export function PropertyList() {
 
   async function fetchImoveis() {
     setLoading(true);
-    const { data, error } = await supabase.from("imoveis").select("id, nome, observacao, ativo, tipo").order("nome");
-    if (!error && data) setImoveis(data);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.from("imoveis").select("id, nome, observacao, ativo, tipo").order("nome");
+      if (error) throw error;
+      if (data) setImoveis(data);
+    } catch (error: any) {
+      console.error("Erro ao buscar imóveis:", error);
+      toast.error("Não foi possível carregar os imóveis.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openForm(imovel?: Imovel) {
@@ -72,43 +172,84 @@ export function PropertyList() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const imovelData = { nome, observacao, tipo, ativo };
-    if (editImovel) {
-      await supabase.from("imoveis").update(imovelData).eq("id", editImovel.id);
-    } else {
-      await supabase.from("imoveis").insert(imovelData);
+    try {
+      const imovelData = { nome, observacao, tipo, ativo };
+      let error;
+
+      if (editImovel) {
+        ({ error } = await supabase.from("imoveis").update(imovelData).eq("id", editImovel.id));
+      } else {
+        ({ error } = await supabase.from("imoveis").insert(imovelData));
+      }
+
+      if (error) throw error;
+
+      toast.success(`Imóvel ${editImovel ? 'atualizado' : 'criado'} com sucesso!`);
+      closeForm();
+      fetchImoveis();
+
+    } catch (error: any) {
+      console.error("Erro ao salvar imóvel:", error);
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    closeForm();
-    fetchImoveis();
   }
 
   async function handleDelete(id: string) {
-    if (window.confirm("Tem certeza que deseja remover este imóvel?")) {
-      await supabase.from("imoveis").delete().eq("id", id);
-      fetchImoveis();
-    }
+    toast.warning("Tem certeza que deseja remover este imóvel?", {
+      action: {
+        label: "Confirmar",
+        onClick: async () => {
+          try {
+            const { error } = await supabase.from("imoveis").delete().eq("id", id);
+            if (error) throw error;
+            toast.success("Imóvel removido com sucesso!");
+            fetchImoveis();
+          } catch (error: any) {
+            console.error("Erro ao remover imóvel:", error);
+            toast.error(`Erro ao remover: ${error.message}`);
+          }
+        },
+      },
+      cancel: {
+        label: "Cancelar",
+        onClick: () => {},
+      },
+      duration: 5000,
+    });
   }
 
   async function fetchTarefas(imovelId: string, tipo: 'pendentes' | 'historico') {
     setLoadingTarefas({id: imovelId, tipo});
-    let query = supabase.from("tarefas").select("id, titulo, data_vencimento, data_conclusao, responsavel_id, status").eq("imovel_id", imovelId);
-    if (tipo === 'pendentes') {
-      query = query.eq("status", "em_aberto").order("data_vencimento", { ascending: true });
-    } else {
-      query = query.eq("status", "concluida").order("data_conclusao", { ascending: false });
+    try {
+      let query = supabase.from("tarefas").select("id, titulo, data_vencimento, data_conclusao, responsavel_id, status").eq("imovel_id", imovelId);
+      if (tipo === 'pendentes') {
+        query = query.eq("status", "em_aberto").order("data_vencimento", { ascending: true });
+      } else {
+        query = query.eq("status", "concluida").order("data_conclusao", { ascending: false });
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data) {
+        setTarefasPorImovel(prev => ({
+          ...prev,
+          [imovelId]: {
+            ...prev[imovelId],
+            [tipo]: data
+          }
+        }));
+        setTarefasVisiveis(prev => ({
+          ...prev,
+          [`${imovelId}-${tipo}`]: 5
+        }));
+      }
+    } catch (error: any) {
+      console.error("Erro ao buscar tarefas do imóvel:", error);
+      toast.error("Não foi possível carregar as tarefas deste imóvel.");
+    } finally {
+      setLoadingTarefas(null);
     }
-    const { data, error } = await query;
-    if (!error && data) {
-      setTarefasPorImovel(prev => ({
-        ...prev,
-        [imovelId]: {
-          ...prev[imovelId],
-          [tipo]: data
-        }
-      }));
-    }
-    setLoadingTarefas(null);
   }
 
   function handleExpand(imovelId: string, tipo: 'pendentes' | 'historico') {
@@ -120,6 +261,14 @@ export function PropertyList() {
         fetchTarefas(imovelId, tipo);
       }
     }
+  }
+
+  function mostrarMaisTarefas(imovelId: string, tipo: 'pendentes' | 'historico') {
+    const key = `${imovelId}-${tipo}`;
+    setTarefasVisiveis(prev => ({
+      ...prev,
+      [key]: (prev[key] || 5) + 5
+    }));
   }
 
   // Filtro de imóveis
@@ -164,12 +313,31 @@ export function PropertyList() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando imóveis...</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-xl border shadow-md bg-white p-4 animate-pulse">
+              <div className="h-5 bg-muted rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-muted rounded w-1/2"></div>
+            </div>
+          ))}
+        </div>
       ) : imoveisFiltrados.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">Nenhum imóvel encontrado.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {imoveisFiltrados.map((imovel) => (
+          {imoveisFiltrados.map((imovel) => {
+            const tarefasVisiveisKey = `${imovel.id}-${expandedImovel?.tipo}`;
+            const tarefasVisiveisCount = tarefasVisiveis[tarefasVisiveisKey] || 5;
+            const tarefasDoImovel = (expandedImovel && expandedImovel.id === imovel.id && expandedImovel.tipo)
+              ? (tarefasPorImovel[imovel.id]?.[expandedImovel.tipo] || [])
+              : [];
+            const abaKey = `${imovel.id}-${expandedImovel?.tipo}`;
+            const statusSelecionado = filtroStatus[abaKey] || 'todas';
+            const tarefasFiltradas = filtrarTarefasStatus(tarefasDoImovel, statusSelecionado);
+            const tarefasParaMostrar = tarefasFiltradas.slice(0, tarefasVisiveisCount);
+            const temMaisTarefas = tarefasFiltradas.length > tarefasVisiveisCount;
+
+            return (
             <div key={imovel.id} className={`group rounded-xl border shadow-md hover:shadow-xl transition-all duration-300 bg-white p-4 flex flex-col gap-2 border-l-4 ${imovel.ativo === false ? "border-destructive/60" : imovel.tipo === "comercial" ? "border-terrah-orange/60" : "border-terrah-turquoise/60"}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col">
@@ -205,28 +373,82 @@ export function PropertyList() {
               {expandedImovel?.id === imovel.id && (
                 <div className="mt-3 bg-muted/30 rounded-lg p-3">
                   {loadingTarefas && loadingTarefas.id === imovel.id && loadingTarefas.tipo === expandedImovel.tipo ? (
-                    <div className="text-center text-muted-foreground text-sm py-2">Carregando tarefas...</div>
-                  ) : (tarefasPorImovel[imovel.id]?.[expandedImovel.tipo]?.length ? (
-                    <ul className="divide-y divide-border/40">
-                      {tarefasPorImovel[imovel.id][expandedImovel.tipo]!.map(tarefa => (
-                        <li key={tarefa.id} className="py-2 flex items-center justify-between text-sm">
-                          <span className="font-medium text-foreground truncate max-w-[60%]">{tarefa.titulo}</span>
-                          <span className="text-xs text-muted-foreground ml-2">
-                            {expandedImovel.tipo === 'pendentes'
-                              ? new Date(tarefa.data_vencimento).toLocaleDateString("pt-BR")
-                              : tarefa.data_conclusao ? new Date(tarefa.data_conclusao).toLocaleDateString("pt-BR") : ''}
-                          </span>
-                        </li>
+                    <div className="space-y-2">
+                      {[...Array(2)].map((_, i) => (
+                        <div key={i} className="rounded-lg p-3 bg-white animate-pulse">
+                          <div className="h-4 bg-muted rounded w-5/6"></div>
+                        </div>
                       ))}
+                    </div>
+                  ) : (tarefasDoImovel.length ? (
+                    <>
+                      <div className="mb-2 flex flex-wrap gap-2 items-center">
+                        {statusOptions.map(opt => (
+                          <Button
+                            key={opt.key}
+                            variant={statusSelecionado === opt.key ? 'default' : 'outline'}
+                            size="sm"
+                            className={statusSelecionado === opt.key ? 'bg-terrah-turquoise hover:bg-terrah-turquoise/90' : ''}
+                            onClick={() => setFiltroStatus(prev => ({ ...prev, [abaKey]: opt.key }))}
+                          >
+                            {opt.label}
+                          </Button>
+                        ))}
+                      </div>
+                      <ul className="space-y-2">
+                        {tarefasParaMostrar.map(tarefa => {
+                          const diasRestantes = calcularDiasRestantes(tarefa.data_vencimento);
+                          return (
+                            <li key={tarefa.id}>
+                              <div
+                                className={`rounded-lg p-3 cursor-pointer transition-all ${getPrioridadeColor(diasRestantes)} hover:shadow-md hover:scale-[1.01] flex items-center justify-between`}
+                                onClick={() => {
+                                  const navEvent: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
+                                  window.dispatchEvent(navEvent);
+                                  setTimeout(() => {
+                                    const filterEvent: FilterTasksByIdEvent = new CustomEvent('filterTasksById', { detail: tarefa.id });
+                                    window.dispatchEvent(filterEvent);
+                                  }, 100);
+                                }}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate text-foreground text-sm mb-1">{tarefa.titulo}</div>
+                                  <div className="text-xs text-muted-foreground">Vence em: {new Date(tarefa.data_vencimento).toLocaleDateString('pt-BR')}</div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 ml-2 flex-shrink-0">
+                                  <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getPrioridadeBadgeColor(diasRestantes)}`}>{getPrioridadeLabel(diasRestantes)}</span>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getStatusColor(tarefa.status)}`}>{getStatusLabel(tarefa.status)}</span>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
                     </ul>
+                      
+                      {/* Botão Mostrar Mais */}
+                      {temMaisTarefas && expandedImovel && expandedImovel.tipo && (
+                        <div className="text-center pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => mostrarMaisTarefas(imovel.id, expandedImovel.tipo)}
+                            className="text-terrah-turquoise border-terrah-turquoise hover:bg-terrah-turquoise hover:text-white"
+                          >
+                            <ChevronDown className="h-4 w-4 mr-2" /> Mostrar mais ({tarefasDoImovel.length - tarefasVisiveisCount} restantes)
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center text-muted-foreground text-sm py-2">Nenhuma tarefa {expandedImovel.tipo === 'pendentes' ? 'pendente' : 'concluída'}.</div>
                   ))}
                   <div className="flex justify-end mt-2">
                     <Button variant="ghost" size="sm" onClick={() => {
-                      window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+                      const navEvent: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
+                      window.dispatchEvent(navEvent);
                       setTimeout(() => {
-                        window.dispatchEvent(new CustomEvent('filterTasksByProperty', { detail: { imovelId: imovel.id, status: expandedImovel.tipo === 'pendentes' ? 'em_aberto' : 'concluida' } }));
+                        const filterEvent: FilterTasksByPropertyEvent = new CustomEvent('filterTasksByProperty', { detail: { imovelId: imovel.id, status: expandedImovel.tipo === 'pendentes' ? 'em_aberto' : 'concluida' } });
+                        window.dispatchEvent(filterEvent);
                       }, 100);
                     }}>
                       Abrir em Tarefas
@@ -235,7 +457,8 @@ export function PropertyList() {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
 
@@ -270,7 +493,10 @@ export function PropertyList() {
               </select>
             </div>
             <div className="flex gap-2 mt-2">
-              <Button type="submit" className="flex-1" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+              <Button type="submit" className="flex-1" disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saving ? "Salvando..." : "Salvar"}
+              </Button>
               <Button type="button" variant="outline" className="flex-1" onClick={closeForm}>Cancelar</Button>
             </div>
           </form>

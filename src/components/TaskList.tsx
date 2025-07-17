@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,13 @@ import { calcularProximaData, formatarPeriodicidade, validarPeriodicidade, migra
 import { uploadMultiplePhotos, checkStorageHealth } from "@/lib/photoUpload";
 import { notifyTaskAssigned } from "@/lib/notifications"; // Adicionar esta import
 import { getDummyPhotosForTask, shouldTaskHavePhotos } from "@/data/dummyPhotos";
+import { useData } from "@/contexts/DataContext";
+import type {
+  SetTaskColorFilterEvent,
+  FilterTasksByPropertyEvent,
+  FilterTasksByIdEvent,
+  SetStatusFilterEvent
+} from "@/types/events";
 
 interface TarefaPredefinida {
   id: string;
@@ -40,6 +47,7 @@ interface Tarefa {
   data_vencimento: string;
   data_conclusao?: string;
   imovel_id: string;
+  imovel_nome?: string; // Adicionar campo opcional
   anotacoes?: string;
   responsavel_id?: string;
   tarefa_predefinida_id?: string;
@@ -49,6 +57,7 @@ interface Tarefa {
 }
 
 export function TaskList() {
+  const { imoveis, funcionarios, refreshData } = useData();
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [tarefasPredefinidas, setTarefasPredefinidas] = useState<TarefaPredefinida[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,8 +68,6 @@ export function TaskList() {
   const [anotacoes, setAnotacoes] = useState("");
   const [imovelId, setImovelId] = useState("");
   const [responsavelId, setResponsavelId] = useState("");
-  const [imoveis, setImoveis] = useState<{id: string, nome: string}[]>([]);
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -78,7 +85,9 @@ export function TaskList() {
   const [editNovasFotos, setEditNovasFotos] = useState<File[]>([]); // Novos arquivos a anexar
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [taskIdFilter, setTaskIdFilter] = useState<string | null>(null);
-  const [storageHealthy, setStorageHealthy] = useState<boolean>(true);
+  // O estado storageHealthy e a função checkStorageConfiguration serão removidos
+  // para evitar timeouts desnecessários. A validação ocorrerá no momento do upload.
+  // const [storageHealthy, setStorageHealthy] = useState<boolean>(true); 
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [concludingTask, setConcludingTask] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
@@ -123,78 +132,95 @@ export function TaskList() {
     return false;
   }
 
+  // Estabilizar funções dos event listeners com useCallback para evitar vazamentos
+  const handleOpenTaskModal = useCallback(() => {
+    openForm();
+  }, []);
+
+  const handleSetTaskColorFilter = useCallback((e: Event) => {
+    const event = e as SetTaskColorFilterEvent;
+    if (event.detail) setColorFilter(event.detail);
+  }, []);
+
+  const handleFilterTasksByProperty = useCallback((e: Event) => {
+    const event = e as FilterTasksByPropertyEvent;
+    if (event.detail) {
+      setPropertyFilter({
+        imovelId: event.detail.imovelId,
+        status: event.detail.status ?? 'em_aberto',
+      });
+    }
+  }, []);
+
+  const handleFilterTasksById = useCallback((e: Event) => {
+    const event = e as FilterTasksByIdEvent;
+    if (event.detail) {
+      setTaskIdFilter(event.detail);
+      setSearchTerm('');
+      setStatusFilter('all');
+      setColorFilter('all');
+    }
+  }, []);
+
+  const handleClearTaskIdFilter = useCallback(() => {
+    setTaskIdFilter(null);
+  }, []);
+
+  const handleClearColorFilter = useCallback(() => {
+    setColorFilter('all');
+  }, []);
+
+  const handleRefreshPredefinedTasks = useCallback(() => {
+    fetchTarefasPredefinidas();
+  }, []);
+
+  const handleSetStatusFilter = useCallback((e: Event) => {
+    const event = e as SetStatusFilterEvent;
+    if (event.detail) {
+      setStatusFilter(event.detail);
+      setColorFilter('all'); // Limpar filtro de cor quando status for alterado
+    }
+  }, []);
+
+  // A função checkStorageConfiguration foi completamente removida.
+
   useEffect(() => {
     fetchTarefas();
     fetchTarefasPredefinidas();
-    fetchImoveis();
-    fetchFuncionarios();
-    checkStorageConfiguration();
-
-    // Listener para abrir modal de nova tarefa
-    const handleOpenTaskModal = () => {
-      openForm();
-    };
-
+    // A chamada a checkStorageConfiguration foi removida daqui.
+    
+    // Adicionar event listeners com funções estáveis
     window.addEventListener('openTaskModal', handleOpenTaskModal);
-
-    // Listener para filtro de cor vindo do Dashboard
-    const handleSetTaskColorFilter = (e: any) => {
-      if (e.detail) setColorFilter(e.detail);
-    };
     window.addEventListener('setTaskColorFilter', handleSetTaskColorFilter);
-
-    // Listener para filtro por imóvel vindo da PropertyList
-    const handleFilterTasksByProperty = (e: any) => {
-      if (e.detail) setPropertyFilter(e.detail);
-    };
     window.addEventListener('filterTasksByProperty', handleFilterTasksByProperty);
-
-    // Listener para filtro por ID vindo do Dashboard
-    const handleFilterTasksById = (e: any) => {
-      if (e.detail) {
-        console.log('[TaskList] Evento filterTasksById recebido:', e.detail);
-        setTaskIdFilter(e.detail);
-        setSearchTerm('');
-        setStatusFilter('all');
-        setColorFilter('all');
-      }
-    };
     window.addEventListener('filterTasksById', handleFilterTasksById);
-
-    // Listener para limpar filtro por ID
-    const handleClearTaskIdFilter = () => {
-      console.log('[TaskList] Evento clearTaskIdFilter recebido');
-      setTaskIdFilter(null);
-    };
     window.addEventListener('clearTaskIdFilter', handleClearTaskIdFilter);
-
-    // Listener para limpar filtro de cor
-    const handleClearColorFilter = () => {
-      console.log('[TaskList] Evento clearColorFilter recebido');
-      setColorFilter('all');
-    };
     window.addEventListener('clearColorFilter', handleClearColorFilter);
-
-    // Listener para filtro de status vindo do Dashboard
-    const handleSetStatusFilter = (e: any) => {
-      console.log('[TaskList] Evento setStatusFilter recebido:', e.detail);
-      if (e.detail) {
-        setStatusFilter(e.detail);
-        setColorFilter('all'); // Limpar filtro de cor quando status for alterado
-      }
-    };
+    window.addEventListener('refreshPredefinedTasks', handleRefreshPredefinedTasks);
     window.addEventListener('setStatusFilter', handleSetStatusFilter);
 
     return () => {
+      // Cleanup com as mesmas referências de função
       window.removeEventListener('openTaskModal', handleOpenTaskModal);
       window.removeEventListener('setTaskColorFilter', handleSetTaskColorFilter);
       window.removeEventListener('filterTasksByProperty', handleFilterTasksByProperty);
       window.removeEventListener('filterTasksById', handleFilterTasksById);
       window.removeEventListener('clearTaskIdFilter', handleClearTaskIdFilter);
       window.removeEventListener('clearColorFilter', handleClearColorFilter);
+      window.removeEventListener('refreshPredefinedTasks', handleRefreshPredefinedTasks);
       window.removeEventListener('setStatusFilter', handleSetStatusFilter);
     };
-  }, []);
+  }, [
+    handleOpenTaskModal,
+    handleSetTaskColorFilter,
+    handleFilterTasksByProperty,
+    handleFilterTasksById,
+    handleClearTaskIdFilter,
+    handleClearColorFilter,
+    handleRefreshPredefinedTasks,
+    handleSetStatusFilter,
+    // checkStorageConfiguration foi removido das dependências
+  ]);
 
   function calcularDiasRestantes(dataVencimento: string): number {
     const hoje = new Date();
@@ -239,14 +265,22 @@ export function TaskList() {
 
   async function fetchTarefas() {
     setLoading(true);
-    const { data, error } = await supabase.from("tarefas").select("id, titulo, descricao, status, data_criacao, data_vencimento, imovel_id, anotacoes, responsavel_id, tarefa_predefinida_id, aguardando_aprovacao_exclusao, created_at, data_conclusao, fotos").order("data_vencimento", { ascending: false });
-    if (!error && data) setTarefas(data);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.from("tarefas").select("id, titulo, descricao, status, data_criacao, data_vencimento, imovel_id, anotacoes, responsavel_id, tarefa_predefinida_id, aguardando_aprovacao_exclusao, created_at, data_conclusao, fotos").order("data_vencimento", { ascending: true });
+      if (error) throw error;
+      if (data) setTarefas(data);
+    } catch (error) {
+      console.error("Erro ao buscar tarefas:", error);
+      toast.error("Não foi possível carregar as tarefas. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRefresh() {
     setRefreshing(true);
     await fetchTarefas();
+    await refreshData(); // Recarrega dados do contexto
     setRefreshing(false);
   }
 
@@ -261,26 +295,6 @@ export function TaskList() {
         periodicidade: migrarPeriodicidadeParaNovoFormato(tarefa.periodicidade)
       }));
       setTarefasPredefinidas(tarefasNormalizadas);
-    }
-  }
-
-  async function fetchImoveis() {
-    const { data } = await supabase.from("imoveis").select("id, nome").order("nome");
-    if (data) setImoveis(data);
-  }
-
-  async function fetchFuncionarios() {
-    const { data } = await supabase.from("funcionarios").select("id, nome, email, cargo, user_id").eq("ativo", true).order("nome");
-    if (data) setFuncionarios(data);
-  }
-
-  async function checkStorageConfiguration() {
-    const health = await checkStorageHealth();
-    setStorageHealthy(health.isHealthy);
-    
-    if (!health.isHealthy) {
-      console.warn('Storage configuration issue:', health.error);
-      toast.error(`Problema no storage: ${health.error}`);
     }
   }
 
@@ -325,83 +339,34 @@ export function TaskList() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedTarefaPredefinida) {
-      alert("Selecione uma tarefa predefinida");
+      toast.warning("Selecione uma tarefa predefinida");
       return;
     }
     // Tarefas "conforme necessidade" não precisam de imóvel
     if (!isOnDemandTask(selectedTarefaPredefinida.titulo) && !imovelId) {
-      alert("Selecione um imóvel");
+      toast.warning("Selecione um imóvel");
       return;
     }
     if (!agendamentoData) {
-      alert("Selecione uma data de agendamento");
+      toast.warning("Selecione uma data de agendamento");
       return;
     }
     if (isVehicleTask(selectedTarefaPredefinida.titulo) && !tipoVeiculo) {
-      alert("Selecione o tipo de veículo");
+      toast.warning("Selecione o tipo de veículo");
       return;
     }
 
     setSaving(true);
     let fotosUrls = [...editFotos];
-    
-    // Upload de novas fotos usando o utilitário melhorado
-    if (editNovasFotos.length > 0 && editTarefa) {
-      if (!storageHealthy) {
-        toast.error('Storage não configurado. Não é possível fazer upload de fotos.');
-        setSaving(false);
-        return;
-      }
+    let tarefaId: string | undefined = editTarefa?.id;
 
-      const uploadResult = await uploadMultiplePhotos(
-        editNovasFotos, 
-        editTarefa.id,
-        (current, total) => {
-          setUploadProgress({ current, total });
-        }
-      );
+    try {
+      // Modificar título se for tarefa de veículo
+      const tituloFinal = isVehicleTask(selectedTarefaPredefinida.titulo) && tipoVeiculo 
+        ? `${selectedTarefaPredefinida.titulo} - ${tipoVeiculo.charAt(0).toUpperCase() + tipoVeiculo.slice(1)}`
+        : selectedTarefaPredefinida.titulo;
 
-      setUploadProgress(null);
-
-      if (uploadResult.success) {
-        fotosUrls.push(...uploadResult.urls);
-        if (uploadResult.errors.length > 0) {
-          toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
-        } else {
-          toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
-        }
-      } else {
-        toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
-        setSaving(false);
-        return;
-      }
-    }
-    // Modificar título se for tarefa de veículo
-    const tituloFinal = isVehicleTask(selectedTarefaPredefinida.titulo) && tipoVeiculo 
-      ? `${selectedTarefaPredefinida.titulo} - ${tipoVeiculo.charAt(0).toUpperCase() + tipoVeiculo.slice(1)}`
-      : selectedTarefaPredefinida.titulo;
-
-    const tarefaData = {
-      titulo: tituloFinal,
-      descricao: selectedTarefaPredefinida.descricao,
-      data_vencimento: agendamentoData,
-      imovel_id: isOnDemandTask(selectedTarefaPredefinida.titulo) ? null : imovelId,
-      responsavel_id: responsavelId || null, // user_id do funcionário
-      anotacoes: anotacoes || null,
-      tarefa_predefinida_id: selectedTarefaPredefinida.id,
-      status: editTarefa?.status || "em_aberto",
-      data_criacao: new Date().toISOString().slice(0, 10),
-      fotos: fotosUrls // sempre array, mesmo vazio
-    };
-    
-    let tarefaId: string;
-    
-    if (editTarefa) {
-      await supabase.from("tarefas").update(tarefaData).eq("id", editTarefa.id);
-      tarefaId = editTarefa.id;
-    } else {
-      // 1. Cria a tarefa sem fotos
-      const { data: insertData, error: insertError } = await supabase.from("tarefas").insert({
+      const tarefaData = {
         titulo: tituloFinal,
         descricao: selectedTarefaPredefinida.descricao,
         data_vencimento: agendamentoData,
@@ -409,88 +374,56 @@ export function TaskList() {
         responsavel_id: responsavelId || null,
         anotacoes: anotacoes || null,
         tarefa_predefinida_id: selectedTarefaPredefinida.id,
-        status: "em_aberto",
+        status: editTarefa?.status || "em_aberto",
         data_criacao: new Date().toISOString().slice(0, 10),
-        fotos: []
-      }).select().single();
-      if (insertError) {
-        console.error("Erro ao inserir tarefa:", insertError);
-        alert("Erro ao cadastrar tarefa: " + insertError.message);
-        setSaving(false);
-        return;
-      }
-      const newId = insertData?.id;
-      if (!newId) {
-        alert("Erro ao cadastrar tarefa: ID não retornado pelo Supabase.");
-        setSaving(false);
-        return;
-      }
-      tarefaId = newId;
+        fotos: fotosUrls
+      };
       
-      let fotosUrls: string[] = [];
-      if (editNovasFotos.length > 0 && newId) {
-        if (!storageHealthy) {
-          toast.error('Storage não configurado. Tarefa criada sem fotos.');
-        } else {
-          const uploadResult = await uploadMultiplePhotos(
-            editNovasFotos, 
-            newId,
-            (current, total) => {
-              setUploadProgress({ current, total });
-            }
-          );
+      if (editTarefa) {
+        const { error } = await supabase.from("tarefas").update(tarefaData).eq("id", editTarefa.id);
+        if (error) throw error;
+        toast.success("Tarefa atualizada com sucesso!");
+        tarefaId = editTarefa.id;
+      } else {
+        const { data: insertData, error: insertError } = await supabase.from("tarefas").insert({ ...tarefaData, fotos: [] }).select().single();
+        if (insertError) throw insertError;
+        
+        tarefaId = insertData?.id;
+        if (!tarefaId) throw new Error("Falha ao obter ID da nova tarefa.");
 
+        toast.success("Tarefa criada com sucesso!");
+        
+        if (editNovasFotos.length > 0) {
+          const uploadResult = await uploadMultiplePhotos(editNovasFotos, tarefaId, (c, t) => setUploadProgress({ current: c, total: t }));
           setUploadProgress(null);
-
           if (uploadResult.success) {
-            fotosUrls = uploadResult.urls;
-            if (uploadResult.errors.length > 0) {
-              toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
-            } else {
-              toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
-            }
+            await supabase.from("tarefas").update({ fotos: uploadResult.urls }).eq("id", tarefaId);
           } else {
-            toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
+            toast.warning("Tarefa criada, mas o upload de fotos falhou.");
           }
         }
-        
-        // 4. Atualiza a tarefa com as URLs das fotos
-        await supabase.from("tarefas").update({ fotos: fotosUrls }).eq("id", newId);
       }
-    }
-    
-    // **NOVA FUNCIONALIDADE: Enviar notificação se a tarefa foi atribuída**
-    if (responsavelId) {
-      console.log('=== DEBUG NOTIFICAÇÃO ===');
-      console.log('ResponsavelId:', responsavelId);
-      console.log('TarefaId:', tarefaId);
-      console.log('TituloFinal:', tituloFinal);
       
-      try {
-        console.log('Chamando notifyTaskAssigned...');
+      if (responsavelId && tarefaId) {
         const notificationResult = await notifyTaskAssigned(responsavelId, tarefaId, tituloFinal);
-        
-        console.log('Resultado da notificação:', notificationResult);
-        
         if (notificationResult.success) {
-          console.log('Notificação enviada com sucesso!');
-          toast.success('Tarefa criada e funcionário notificado!');
+          toast.success('Funcionário notificado!');
+          window.dispatchEvent(new CustomEvent('refreshNotifications'));
         } else {
-          console.warn('Falha ao enviar notificação:', notificationResult.error);
-          toast.warning('Tarefa criada, mas notificação não foi enviada.');
+          toast.warning('Notificação não foi enviada.');
         }
-      } catch (error) {
-        console.error('Erro ao enviar notificação:', error);
-        toast.error('Erro ao enviar notificação: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
       }
-    } else {
-      console.log('Nenhum responsável selecionado, não enviando notificação');
+
+      closeForm();
+      fetchTarefas();
+      window.dispatchEvent(new Event('tarefasAtualizadas'));
+
+    } catch (error: any) {
+      console.error("Erro ao salvar tarefa:", error);
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
-    
-    setSaving(false);
-    closeForm();
-    fetchTarefas();
-    window.dispatchEvent(new Event('tarefasAtualizadas'));
   }
 
   function handleDelete(id: string) {
@@ -506,18 +439,16 @@ export function TaskList() {
       const { error } = await supabase.from("tarefas").delete().eq("id", taskToDelete);
       
       if (error) {
-        console.error('Erro ao excluir tarefa:', error);
-        toast.error(`Erro ao excluir: ${error.message}`);
-        return;
+        throw error;
       }
       
       toast.success('Tarefa excluída com sucesso!');
       fetchTarefas();
       window.dispatchEvent(new Event('tarefasAtualizadas'));
       
-    } catch (error) {
-      console.error('Erro inesperado ao excluir:', error);
-      toast.error('Erro inesperado ao excluir tarefa');
+    } catch (error: any) {
+      console.error('Erro ao excluir tarefa:', error);
+      toast.error(`Erro ao excluir: ${error.message}`);
     } finally {
       setDeletingTask(false);
       closeDeleteModal();
@@ -541,33 +472,73 @@ export function TaskList() {
   };
 
   const filteredTarefas = tarefas.filter(tarefa => {
-    if (taskIdFilter) return tarefa.id === taskIdFilter;
-    if (propertyFilter) {
-      if (tarefa.imovel_id !== propertyFilter.imovelId) return false;
-      if (propertyFilter.status && tarefa.status !== propertyFilter.status) return false;
-    }
     const diasRestantes = calcularDiasRestantes(tarefa.data_vencimento);
-    const statusCor = getStatusCor(diasRestantes, tarefa.status);
-    const statusLabel = getStatusLabel(diasRestantes);
-    const priorityColor = getPriorityColor(diasRestantes);
 
-    const matchesSearchTerm = tarefa.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               tarefa.descricao.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatusFilter = statusFilter === 'all' || tarefa.status === statusFilter;
-
-    // Novo filtro de cor por label
-    let matchesColorFilter = colorFilter === 'all';
-    if (!matchesColorFilter) {
-      if (colorFilter === 'urgentesEatrasadas' && tarefa.status === 'em_aberto' && (diasRestantes <= 5 || diasRestantes < 0)) matchesColorFilter = true;
-      if (colorFilter === 'atrasada' && diasRestantes < 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
-      if (colorFilter === 'urgente' && diasRestantes <= 5 && diasRestantes >= 0 && tarefa.status === 'em_aberto') matchesColorFilter = true;
-      if (colorFilter === 'atencao' && diasRestantes >= 1 && diasRestantes <= 5 && tarefa.status === 'em_aberto') matchesColorFilter = true;
-      if (colorFilter === 'moderado' && diasRestantes >= 6 && diasRestantes <= 14 && tarefa.status === 'em_aberto') matchesColorFilter = true;
-      if (colorFilter === 'normal' && diasRestantes >= 15 && tarefa.status === 'em_aberto') matchesColorFilter = true;
+    // Filtro por ID de tarefa específica
+    if (taskIdFilter && tarefa.id !== taskIdFilter) {
+      return false;
     }
+    
+    // Se o filtro de ID estiver ativo, ignora outros filtros
+    if (taskIdFilter) return true;
 
-    return matchesSearchTerm && matchesStatusFilter && matchesColorFilter;
+    // Filtro de busca por título
+    const searchMatch = !searchTerm || tarefa.titulo.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Filtro de status
+    const statusMatch = statusFilter === 'all' || tarefa.status === statusFilter;
+    
+    // Filtro por cor/prioridade
+    let colorMatch = true;
+    if (colorFilter !== 'all') {
+      switch (colorFilter) {
+        case 'urgentesEatrasadas':
+          colorMatch = (diasRestantes <= 5 || diasRestantes < 0) && tarefa.status === 'em_aberto';
+          break;
+        case 'atrasada':
+          colorMatch = diasRestantes < 0 && tarefa.status === 'em_aberto';
+          break;
+        case 'urgente':
+          colorMatch = diasRestantes <= 5 && diasRestantes >= 0 && tarefa.status === 'em_aberto';
+          break;
+        case 'atencao':
+          colorMatch = diasRestantes > 5 && diasRestantes <= 14 && tarefa.status === 'em_aberto';
+          break;
+        case 'moderado':
+          colorMatch = diasRestantes > 14 && diasRestantes <= 29 && tarefa.status === 'em_aberto';
+          break;
+        case 'normal':
+          colorMatch = diasRestantes > 29 && tarefa.status === 'em_aberto';
+          break;
+        default:
+          colorMatch = true;
+      }
+    }
+    
+    // Filtro por imóvel
+    const propertyMatch = !imovelId || tarefa.imovel_id === imovelId;
+
+    return searchMatch && statusMatch && colorMatch && propertyMatch;
+  }).sort((a, b) => {
+    const diasA = calcularDiasRestantes(a.data_vencimento);
+    const diasB = calcularDiasRestantes(b.data_vencimento);
+    
+    // Se ambas são concluídas, ordenar por data de conclusão (mais recente primeiro)
+    if (a.status === 'concluida' && b.status === 'concluida') {
+      return new Date(b.data_conclusao || '').getTime() - new Date(a.data_conclusao || '').getTime();
+    }
+    
+    // Se apenas uma é concluída, a concluída vai por último
+    if (a.status === 'concluida') return 1;
+    if (b.status === 'concluida') return -1;
+    
+    // Para tarefas pendentes, ordenar por prioridade (mais urgente primeiro)
+    // Atrasadas primeiro (dias negativos)
+    if (diasA < 0 && diasB >= 0) return -1;
+    if (diasA >= 0 && diasB < 0) return 1;
+    
+    // Depois por dias restantes (menos dias = mais urgente)
+    return diasA - diasB;
   });
 
   // Adicionar handlers para o modal de início de tarefa
@@ -595,82 +566,53 @@ export function TaskList() {
     if (!startTarefa || concludingTask) return;
     
     setConcludingTask(true);
-    console.log('Iniciando conclusão de tarefa:', startTarefa.id);
-    console.log('Fotos selecionadas:', conclusaoFotos.length);
     
-    const dataConclusaoValida = conclusaoData || getTodayDate();
-    console.log('Data de conclusão selecionada:', conclusaoData);
-    console.log('Data de conclusão válida:', dataConclusaoValida);
-    const responsavelValido = conclusaoResponsavel && conclusaoResponsavel.trim() !== '' ? conclusaoResponsavel : null;
-    let fotosUrls: string[] = [];
-    
-    // Upload de fotos se houver
-    if (conclusaoFotos.length > 0) {
-      if (!storageHealthy) {
-        toast.error('Storage não configurado. Tarefa concluída sem fotos.');
-      } else {
-        console.log('Iniciando upload de', conclusaoFotos.length, 'fotos...');
+    try {
+      const dataConclusaoValida = conclusaoData || getTodayDate();
+      const responsavelValido = conclusaoResponsavel && conclusaoResponsavel.trim() !== '' ? conclusaoResponsavel : null;
+      let fotosUrls: string[] = startTarefa.fotos || [];
+      
+      if (conclusaoFotos.length > 0) {
+        // A verificação de storageHealthy foi removida daqui.
+        // O erro será tratado diretamente pelo uploadMultiplePhotos.
         
         const uploadResult = await uploadMultiplePhotos(
           conclusaoFotos, 
           startTarefa.id,
-          (current, total) => {
-            setUploadProgress({ current, total });
-          }
+          (current, total) => setUploadProgress({ current, total })
         );
-
         setUploadProgress(null);
 
         if (uploadResult.success) {
-          fotosUrls = uploadResult.urls;
-          console.log('Upload concluído. URLs:', fotosUrls);
-          if (uploadResult.errors.length > 0) {
-            toast.error(`Alguns uploads falharam: ${uploadResult.errors.join(', ')}`);
-          } else {
-            toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
-          }
+          fotosUrls = [...fotosUrls, ...uploadResult.urls];
+          toast.success(`${uploadResult.totalUploaded} foto(s) enviada(s) com sucesso!`);
         } else {
-          console.error('Falha no upload:', uploadResult.errors);
-          toast.error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
-          setConcludingTask(false);
-          return; // Para o processo se upload falhou
+          throw new Error(`Falha no upload: ${uploadResult.errors.join(', ')}`);
         }
       }
-    }
-    
-    try {
-      console.log('Atualizando tarefa no banco...');
-      // Concluir a tarefa atual
+      
       const { error } = await supabase.from("tarefas").update({
-      status: "concluida",
+        status: "concluida",
         data_conclusao: dataConclusaoValida,
         responsavel_id: responsavelValido,
         anotacoes: conclusaoAnotacoes || null,
-        fotos: fotosUrls // sempre array, mesmo vazio
-    }).eq("id", startTarefa.id);
+        fotos: fotosUrls
+      }).eq("id", startTarefa.id);
 
-      if (error) {
-        console.error('Erro ao atualizar tarefa:', error);
-        toast.error(`Erro ao salvar: ${error.message}`);
-        setConcludingTask(false);
-        return;
-      }
+      if (error) throw error;
 
-      console.log('Tarefa atualizada com sucesso!');
-
-      // Auto-criação de próxima tarefa se for recorrente
       if (startTarefa.tarefa_predefinida_id) {
         await criarProximaTarefaRecorrente(startTarefa, dataConclusaoValida);
       }
       
-    await fetchTarefas();
-    closeStartModal();
+      await fetchTarefas();
+      closeStartModal();
       toast.success("Tarefa concluída! O admin foi notificado.");
-    window.dispatchEvent(new Event('tarefasAtualizadas'));
+      window.dispatchEvent(new Event('tarefasAtualizadas'));
       
-    } catch (error) {
-      console.error('Erro geral na conclusão da tarefa:', error);
-      toast.error('Erro inesperado ao concluir tarefa');
+    } catch (error: any) {
+      console.error('Erro ao concluir tarefa:', error);
+      toast.error(`Erro ao concluir tarefa: ${error.message}`);
     } finally {
       setConcludingTask(false);
     }
@@ -684,15 +626,31 @@ export function TaskList() {
       // Buscar a tarefa predefinida para obter a periodicidade
       const tarefaPredefinida = tarefasPredefinidas.find(t => t.id === tarefaConcluida.tarefa_predefinida_id);
       if (!tarefaPredefinida || !tarefaPredefinida.periodicidade) {
-        console.log('Tarefa sem periodicidade definida, não criando próxima tarefa');
         return;
       }
 
-      // Calcular a próxima data
-      const proximaData = calcularProximaData(dataConclusao, tarefaPredefinida.periodicidade);
-      if (!proximaData) {
-        console.error('Erro ao calcular próxima data para periodicidade:', tarefaPredefinida.periodicidade);
-        return;
+      // Verificar se é periodicidade "conforme necessidade"
+      const isConformeNecessidade = tarefaPredefinida.periodicidade.toLowerCase().includes('conforme-necessidade') || 
+                                   tarefaPredefinida.periodicidade.toLowerCase().includes('conforme necessidade');
+
+      let dataVencimento: string;
+      let mensagemSucesso: string;
+
+      if (isConformeNecessidade) {
+        // Para "conforme necessidade", criar tarefa sem prazo definido (data muito distante)
+        const dataSemPrazo = new Date();
+        dataSemPrazo.setFullYear(dataSemPrazo.getFullYear() + 10); // 10 anos no futuro
+        dataVencimento = dataSemPrazo.toISOString().split('T')[0];
+        mensagemSucesso = "Próxima tarefa criada! Nova tarefa sem prazo definido (conforme necessidade).";
+      } else {
+        // Calcular a próxima data para periodicidades normais
+        const proximaData = calcularProximaData(dataConclusao, tarefaPredefinida.periodicidade);
+        if (!proximaData) {
+          console.error('Erro ao calcular próxima data para periodicidade:', tarefaPredefinida.periodicidade);
+          return;
+        }
+        dataVencimento = proximaData.toISOString().split('T')[0];
+        mensagemSucesso = `Próxima tarefa criada! Nova tarefa agendada para ${proximaData.toLocaleDateString('pt-BR')}`;
       }
 
       // Criar nova tarefa com os mesmos dados, mas nova data
@@ -701,7 +659,7 @@ export function TaskList() {
         descricao: tarefaPredefinida.descricao,
         status: 'em_aberto',
         data_criacao: dataConclusao, // Data de criação = data de conclusão da anterior
-        data_vencimento: proximaData.toISOString().split('T')[0], // Próxima data calculada
+        data_vencimento: dataVencimento,
         imovel_id: tarefaConcluida.imovel_id,
         responsavel_id: tarefaConcluida.responsavel_id,
         tarefa_predefinida_id: tarefaPredefinida.id,
@@ -719,8 +677,7 @@ export function TaskList() {
         console.error('Erro ao criar próxima tarefa recorrente:', error);
         toast.error("Tarefa concluída, mas não foi possível criar a próxima tarefa automática.");
       } else {
-        console.log('Próxima tarefa criada automaticamente:', data);
-        toast.success(`Próxima tarefa criada! Nova tarefa agendada para ${proximaData.toLocaleDateString('pt-BR')}`);
+        toast.success(mensagemSucesso);
       }
     } catch (error) {
       console.error('Erro ao processar criação de próxima tarefa:', error);
@@ -929,16 +886,36 @@ export function TaskList() {
                 <option value="moderado">Moderado</option>
                 <option value="normal">Normal</option>
               </select>
+              {/* Filtro por Imóvel */}
+              <select
+                className="border rounded px-3 py-2 text-sm"
+                value={imovelId}
+                onChange={e => setImovelId(e.target.value)}
+              >
+                <option value="">Todos os imóveis</option>
+                {imoveis.map(imovel => (
+                  <option key={imovel.id} value={imovel.id}>{imovel.nome}</option>
+                ))}
+              </select>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Lista de Tarefas */}
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-terrah-turquoise mx-auto mb-4"></div>
-          Carregando tarefas...
+      {(loading || refreshing) ? (
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="p-4">
+              <div className="flex justify-between items-start">
+                <div className="space-y-2">
+                  <div className="h-4 bg-muted rounded w-48 animate-pulse"></div>
+                  <div className="h-3 bg-muted rounded w-32 animate-pulse"></div>
+                </div>
+                <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+              </div>
+            </Card>
+          ))}
         </div>
       ) : filteredTarefas.length === 0 ? (
         <Card className="hover:shadow-lg transition-all duration-300">
@@ -1211,19 +1188,20 @@ export function TaskList() {
                   )}
                   
                   {/* Aviso sobre storage */}
-                  {!storageHealthy && (
+                  {/* {!storageHealthy && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                       <p className="text-sm text-yellow-800">
                         ⚠️ Storage não configurado. Configure as variáveis de ambiente para habilitar upload de fotos.
                       </p>
                     </div>
-                  )}
+                  )} */}
                 </div>
               </>
             )}
 
             <div className="flex gap-2 mt-4">
               <Button type="submit" className="flex-1" disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {saving ? "Salvando..." : "Salvar"}
               </Button>
               <Button type="button" variant="outline" className="flex-1" onClick={closeForm}>

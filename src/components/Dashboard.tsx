@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { CheckCircle, Clock, Home, Plus, AlertTriangle, TrendingUp, Users, Calendar, MapPin, UserCheck, RefreshCw, Bell, Filter, FileText, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useData } from "@/contexts/DataContext";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ReportModal } from "./ReportModal";
+import type {
+  NavigateToTabEvent,
+  SetStatusFilterEvent,
+  SetTaskColorFilterEvent,
+  FilterTasksByIdEvent,
+  ClearTaskIdFilterEvent
+} from "@/types/events";
 
 interface DashboardStats {
   tarefasPendentes: number;
@@ -46,6 +56,7 @@ interface TarefaDetalhada {
 }
 
 export function Dashboard() {
+  const { imoveis, funcionarios, loading: dataLoading, refreshData } = useData();
   const [stats, setStats] = useState<DashboardStats>({
     tarefasPendentes: 0,
     tarefasConcluidasHoje: 0,
@@ -61,54 +72,25 @@ export function Dashboard() {
   });
   const [atividadesRecentes, setAtividadesRecentes] = useState<AtividadeRecente[]>([]);
   const [tarefasUrgentes, setTarefasUrgentes] = useState<TarefaDetalhada[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [alertas, setAlertas] = useState<{tipo: 'atraso' | 'urgente' | 'pendente', mensagem: string, count: number}[]>([]);
   const [periodoFiltro, setPeriodoFiltro] = useState<'hoje' | 'semana' | 'mes'>('hoje');
-  const isMobile = useIsMobile();
-  const [imoveis, setImoveis] = useState<{id: string, nome: string}[]>([]);
-  const [funcionarios, setFuncionarios] = useState<{id: string, nome: string, user_id: string}[]>([]);
   const [tarefasUrgentesRaw, setTarefasUrgentesRaw] = useState<TarefaDetalhada[]>([]);
   const [alertasFechados, setAlertasFechados] = useState<string[]>(() => {
     const saved = sessionStorage.getItem('alertasFechados');
     return saved ? JSON.parse(saved) : [];
   });
-  const [showReportModal, setShowReportModal] = useState(false); // Added state for modal
-  const [reportModalTitle, setReportModalTitle] = useState(''); // Added state for modal
-  const [reportModalCount, setReportModalCount] = useState(0); // Added state for modal
-  const [reportModalColor, setReportModalColor] = useState(''); // Added state for modal
-  const [reportTasks, setReportTasks] = useState<TarefaDetalhada[]>([]); // Estado para as tarefas do relatório
-  const [loadingReport, setLoadingReport] = useState(false); // Estado de loading para o modal
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportModalTitle, setReportModalTitle] = useState('');
+  const [reportModalCount, setReportModalCount] = useState(0);
+  const [reportModalColor, setReportModalColor] = useState('');
+  const [reportTasks, setReportTasks] = useState<TarefaDetalhada[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [error, setError] = useState<string | null>(null); // Novo estado de erro
+  const [loading, setLoading] = useState(true); // Novo estado de loading
 
 
-  useEffect(() => {
-    fetchDashboardData();
-    // fetchAtividadesRecentes(); // Comentado para evitar erro 400
-
-    // Buscar imóveis e funcionários
-    async function fetchImoveis() {
-      const { data } = await supabase.from("imoveis").select("id, nome");
-      if (data) setImoveis(data);
-    }
-    async function fetchFuncionarios() {
-      const { data } = await supabase.from("funcionarios").select("id, nome, user_id");
-      if (data) setFuncionarios(data);
-    }
-    fetchImoveis();
-    fetchFuncionarios();
-  }, [periodoFiltro, alertasFechados]);
-
-  useEffect(() => {
-    setTarefasUrgentes(
-      tarefasUrgentesRaw.map(tarefa => ({
-        ...tarefa,
-        imovel: imoveis.find(i => i.id === tarefa.imovel_id)?.nome || 'Imóvel não especificado',
-        responsavel: funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome || 'Sem responsável',
-      }))
-    );
-  }, [tarefasUrgentesRaw, imoveis, funcionarios]);
-
-  function calcularDiasRestantes(dataVencimento: string): number {
+  const calcularDiasRestantes = useCallback((dataVencimento: string): number => {
     // Padronizar para ignorar horas/minutos/segundos
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -117,16 +99,16 @@ export function Dashboard() {
     const diffTime = vencimento.getTime() - hoje.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
-  }
+  }, []);
 
-  function getStatusCor(diasRestantes: number): string {
+  const getStatusCor = useCallback((diasRestantes: number): string => {
     if (diasRestantes <= 5) return 'text-destructive bg-destructive/10';
     if (diasRestantes <= 14) return 'text-terrah-orange bg-terrah-orange/10';
     if (diasRestantes <= 29) return 'text-yellow-600 bg-yellow-100';
     return 'text-green-600 bg-green-100';
-  }
+  }, []);
 
-  function getStatusLabel(diasRestantes: number): string {
+  const getStatusLabel = useCallback((diasRestantes: number): string => {
     if (diasRestantes < 0) return 'Urgente';
     if (diasRestantes === 0) return 'Hoje';
     if (diasRestantes === 1) return 'Amanhã';
@@ -134,11 +116,11 @@ export function Dashboard() {
     if (diasRestantes <= 14) return 'Atenção';
     if (diasRestantes <= 29) return 'Moderado';
     return 'Normal';
-  }
+  }, []);
 
-  async function fetchDashboardData() {
+  const fetchDashboardData = useCallback(async () => {
     setLoading(true);
-    
+    setError(null); // Limpa erros anteriores
     try {
       // Calcular datas baseadas no filtro
       const hoje = new Date();
@@ -185,11 +167,8 @@ export function Dashboard() {
         .select('*', { count: 'exact', head: true })
         .gte('created_at', inicioPeriodoStr);
 
-      // Imóveis ativos
-      const { count: imoveisAtivos } = await supabase
-        .from('imoveis')
-        .select('*', { count: 'exact', head: true })
-        .eq('ativo', true);
+      // Imóveis ativos (usando dados do contexto)
+      const imoveisAtivos = imoveis.length;
 
       // Buscar tarefas pendentes para análise de prazo (INCLUIR atrasadas)
       const { data: tarefasPendentesUrgentes, error: tarefasError } = await supabase
@@ -208,18 +187,28 @@ export function Dashboard() {
 
       if (tarefasError) {
         console.error("Erro ao buscar tarefas urgentes:", tarefasError);
+      } else {
+        const tarefasUrgentesList: TarefaDetalhada[] = tarefasPendentesUrgentes?.map(tarefa => ({
+          id: tarefa.id,
+          titulo: tarefa.titulo,
+          data_vencimento: tarefa.data_vencimento,
+          imovel_id: tarefa.imovel_id,
+          responsavel_id: tarefa.responsavel_id,
+          diasRestantes: calcularDiasRestantes(tarefa.data_vencimento)
+        })) || [];
+
+        setTarefasUrgentesRaw(tarefasUrgentesList);
       }
 
-      const { data: todasTarefasPendentes } = await supabase
+      // Buscar TODAS as tarefas pendentes para os contadores
+      const { data: tarefas } = await supabase
         .from('tarefas')
         .select(`id, data_vencimento`)
         .eq('status', 'em_aberto');
 
-      // Analisar prazos de TODAS as tarefas pendentes para os contadores
       let urgentes = 0, atencao = 0, moderadas = 0, normais = 0, atrasadasRelatorio = 0;
-
-      if (todasTarefasPendentes) {
-        todasTarefasPendentes.forEach(tarefa => {
+      if (tarefas) {
+        tarefas.forEach(tarefa => {
           const diasRestantes = calcularDiasRestantes(tarefa.data_vencimento);
           if (diasRestantes < 0) {
             atrasadasRelatorio++;
@@ -236,16 +225,6 @@ export function Dashboard() {
         });
       }
 
-      // A lista de tarefas urgentes para exibição é a que já foi limitada
-      const tarefasUrgentesList: TarefaDetalhada[] = tarefasPendentesUrgentes?.map(tarefa => ({
-        id: tarefa.id,
-        titulo: tarefa.titulo,
-        data_vencimento: tarefa.data_vencimento,
-        imovel_id: tarefa.imovel_id,
-        responsavel_id: tarefa.responsavel_id,
-        diasRestantes: calcularDiasRestantes(tarefa.data_vencimento)
-      })) || [];
-
       setStats({
         tarefasPendentes: pendentes || 0,
         tarefasConcluidasHoje: concluidasPeriodo || 0,
@@ -257,10 +236,8 @@ export function Dashboard() {
         tarefasAtencao: atencao,
         tarefasModeradas: moderadas,
         tarefasNormais: normais,
-        tarefasAtrasadasRelatorio: atrasadasRelatorio // Adicionado para o relatório
+        tarefasAtrasadasRelatorio: atrasadasRelatorio,
       });
-
-      setTarefasUrgentesRaw(tarefasUrgentesList);
 
       // Gerar alertas baseados em prazos
       const novosAlertas = [];
@@ -291,20 +268,43 @@ export function Dashboard() {
       // Buscar atividades recentes
       await fetchAtividadesRecentes();
 
-    } catch (error) {
-      console.error('Erro ao buscar dados do dashboard:', error);
+    } catch (error: any) {
+      console.error('Erro detalhado ao buscar dados do dashboard:', error);
+      setError("Não foi possível carregar os dados do dashboard. Verifique sua conexão e tente novamente.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [periodoFiltro, alertasFechados, imoveis, funcionarios, calcularDiasRestantes, dataLoading]); // Dependências ajustadas
 
-  async function handleRefresh() {
+  useEffect(() => {
+    if (!dataLoading) {
+      fetchDashboardData();
+    }
+    // fetchAtividadesRecentes(); // Comentado para evitar erro 400
+  }, [dataLoading, fetchDashboardData]);
+
+  // Não precisamos mais do useEffect para buscar imóveis e funcionários aqui
+
+  useEffect(() => {
+    if (imoveis.length > 0 && funcionarios.length > 0) {
+      setTarefasUrgentes(
+        tarefasUrgentesRaw.map(tarefa => ({
+          ...tarefa,
+          imovel: imoveis.find(i => i.id === tarefa.imovel_id)?.nome || 'Imóvel não especificado',
+          responsavel: funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome || 'Sem responsável',
+        }))
+      );
+    }
+  }, [tarefasUrgentesRaw, imoveis, funcionarios]);
+
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    await refreshData(); // Usa a função do contexto para recarregar tudo
     await fetchDashboardData();
     setRefreshing(false);
-  }
+  }, [refreshData, fetchDashboardData]);
 
-  async function fetchAtividadesRecentes() {
+  const fetchAtividadesRecentes = useCallback(async () => {
     try {
       // Buscar tarefas recentes com informações de imóvel e responsável
       const { data: tarefas } = await supabase
@@ -314,15 +314,11 @@ export function Dashboard() {
           titulo,
           status,
           created_at,
-          updated_at,
           imovel_id,
           responsavel_id
         `)
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(5);
-
-      // LOG TEMPORÁRIO PARA DEBUG
-      console.log('tarefas recentes para atividade:', tarefas);
 
       if (tarefas) {
         setAtividadesRecentes(
@@ -333,7 +329,7 @@ export function Dashboard() {
               tipo: tarefa.status === 'concluida' ? 'conclusao' : (tarefa.status === 'em_aberto' ? 'inicio' : 'criacao'),
               imovel: imoveis.find(i => i.id === tarefa.imovel_id)?.nome || 'Imóvel não especificado',
               responsavel: funcionarios.find(f => f.user_id === tarefa.responsavel_id)?.nome || 'Sistema',
-              timestamp: new Date(tarefa.updated_at || tarefa.created_at).toISOString(),
+              timestamp: new Date(tarefa.created_at).toISOString(),
               status: tarefa.status
             };
           })
@@ -342,11 +338,11 @@ export function Dashboard() {
     } catch (error) {
       console.error('Erro ao buscar atividades recentes:', error);
     }
-  }
+  }, [imoveis, funcionarios]);
 
-  function handleNovaTarefa() {
+  const handleNovaTarefa = useCallback(() => {
     // Navegar para a aba de tarefas e abrir modal de nova tarefa
-    const event = new CustomEvent('navigateToTab', { detail: 'tasks' });
+    const event: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
     window.dispatchEvent(event);
     
     // Disparar evento para abrir modal de nova tarefa
@@ -354,15 +350,15 @@ export function Dashboard() {
       const novaTarefaEvent = new CustomEvent('openNewTaskModal');
       window.dispatchEvent(novaTarefaEvent);
     }, 100);
-  }
+  }, []);
 
-  function handleGerenciarImoveis() {
+  const handleGerenciarImoveis = useCallback(() => {
     // Navegar para a aba de imóveis
     const event = new CustomEvent('navigateToTab', { detail: 'properties' });
     window.dispatchEvent(event);
-  }
+  }, []);
 
-  function formatTimeAgo(timestamp: string) {
+  const formatTimeAgo = useCallback((timestamp: string) => {
     const now = new Date();
     const time = new Date(timestamp);
     const diffInHours = Math.floor((now.getTime() - time.getTime()) / (1000 * 60 * 60));
@@ -374,52 +370,52 @@ export function Dashboard() {
     const diffInDays = Math.floor(diffInHours / 24);
     if (diffInDays === 1) return 'há 1 dia';
     return `há ${diffInDays} dias`;
-  }
+  }, []);
 
-  function getActivityIcon(tipo: AtividadeRecente['tipo']) {
+  const getActivityIcon = useCallback((tipo: AtividadeRecente['tipo']) => {
     switch (tipo) {
       case 'conclusao': return <CheckCircle className="h-4 w-4 text-success" />;
       case 'criacao': return <Plus className="h-4 w-4 text-terrah-orange" />;
       case 'inicio': return <Clock className="h-4 w-4 text-terrah-turquoise" />;
       case 'atraso': return <AlertTriangle className="h-4 w-4 text-destructive" />;
     }
-  }
+  }, []);
 
-  function getActivityColor(tipo: AtividadeRecente['tipo']) {
+  const getActivityColor = useCallback((tipo: AtividadeRecente['tipo']) => {
     switch (tipo) {
       case 'conclusao': return 'from-success/5 to-success/10 border-success/20';
       case 'criacao': return 'from-terrah-orange/5 to-terrah-orange/10 border-terrah-orange/20';
       case 'inicio': return 'from-terrah-turquoise/5 to-terrah-turquoise/10 border-terrah-turquoise/20';
       case 'atraso': return 'from-destructive/5 to-destructive/10 border-destructive/20';
     }
-  }
+  }, []);
 
-  function getActivityDotColor(tipo: AtividadeRecente['tipo']) {
+  const getActivityDotColor = useCallback((tipo: AtividadeRecente['tipo']) => {
     switch (tipo) {
       case 'conclusao': return 'bg-success';
       case 'criacao': return 'bg-terrah-orange';
       case 'inicio': return 'bg-terrah-turquoise';
       case 'atraso': return 'bg-destructive';
     }
-  }
+  }, []);
 
-  const getPeriodoLabel = () => {
+  const getPeriodoLabel = useCallback(() => {
     switch (periodoFiltro) {
       case 'hoje': return 'Hoje';
       case 'semana': return 'Última Semana';
       case 'mes': return 'Último Mês';
     }
-  };
+  }, [periodoFiltro]);
 
-  const getPeriodoStatsLabel = () => {
+  const getPeriodoStatsLabel = useCallback(() => {
     switch (periodoFiltro) {
       case 'hoje': return 'Concluídas Hoje';
       case 'semana': return 'Concluídas na Semana';
       case 'mes': return 'Concluídas no Mês';
     }
-  };
+  }, [periodoFiltro]);
 
-const statsData = [
+const statsData = useMemo(() => [
   {
     title: "Tarefas Pendentes",
       value: stats.tarefasPendentes.toString(),
@@ -429,10 +425,13 @@ const statsData = [
       trend: stats.tarefasCriadasHoje > 0 ? `+${stats.tarefasCriadasHoje}` : "0",
     trendUp: stats.tarefasCriadasHoje > 0,
     onClick: () => {
-      window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+      const navEvent: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
+      window.dispatchEvent(navEvent);
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('clearTaskIdFilter'));
-        window.dispatchEvent(new CustomEvent('setStatusFilter', { detail: 'em_aberto' }));
+        const clearIdEvent: ClearTaskIdFilterEvent = new CustomEvent('clearTaskIdFilter');
+        window.dispatchEvent(clearIdEvent);
+        const statusEvent: SetStatusFilterEvent = new CustomEvent('setStatusFilter', { detail: 'em_aberto' });
+        window.dispatchEvent(statusEvent);
       }, 100);
     },
   },
@@ -445,65 +444,21 @@ const statsData = [
       trend: stats.tarefasConcluidasHoje > 0 ? `+${stats.tarefasConcluidasHoje}` : "0",
     trendUp: true,
     onClick: () => {
-      window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
+      const navEvent: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
+      window.dispatchEvent(navEvent);
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('clearTaskIdFilter'));
-        window.dispatchEvent(new CustomEvent('setTaskColorFilter', { detail: 'all' }));
-        window.dispatchEvent(new CustomEvent('setStatusFilter', { detail: 'concluida' }));
+        const clearIdEvent: ClearTaskIdFilterEvent = new CustomEvent('clearTaskIdFilter');
+        window.dispatchEvent(clearIdEvent);
+        const colorEvent: SetTaskColorFilterEvent = new CustomEvent('setTaskColorFilter', { detail: 'all' });
+        window.dispatchEvent(colorEvent);
+        const statusEvent: SetStatusFilterEvent = new CustomEvent('setStatusFilter', { detail: 'concluida' });
+        window.dispatchEvent(statusEvent);
       }, 100);
     },
     }
-  ];
+  ], [stats, getPeriodoStatsLabel]);
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 h-12 bg-muted animate-pulse rounded-lg"></div>
-          <div className="flex-1 h-12 bg-muted animate-pulse rounded-lg"></div>
-        </div>
-        
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-10 h-10 bg-muted rounded-xl"></div>
-                  <div className="w-8 h-4 bg-muted rounded"></div>
-                </div>
-                <div className="h-8 bg-muted rounded"></div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="h-4 bg-muted rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        
-        <Card className="animate-pulse">
-          <CardHeader>
-            <div className="h-6 bg-muted rounded w-32"></div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-3 p-4">
-                  <div className="w-3 h-3 bg-muted rounded-full"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-muted rounded w-3/4"></div>
-                    <div className="h-3 bg-muted rounded w-1/2"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Ajustar handleOpenReportModal para aceitar 'pendentes' e 'concluidas'
-  async function handleOpenReportModal(type: 'pendentes' | 'concluidas' | 'normal' | 'moderado' | 'atencao' | 'urgente') {
+  const handleOpenReportModal = useCallback(async (type: 'pendentes' | 'concluidas' | 'normal' | 'moderado' | 'atencao' | 'urgente') => {
     setLoadingReport(true);
     setShowReportModal(true);
 
@@ -581,14 +536,32 @@ const statsData = [
     setReportTasks(tarefasDetalhadas);
     setReportModalCount(tarefasDetalhadas.length);
     setLoadingReport(false);
-  }
+  }, [imoveis, funcionarios, calcularDiasRestantes]);
 
-  function handleCloseReportModal() {
+  const handleCloseReportModal = useCallback(() => {
     setShowReportModal(false);
     setReportModalTitle('');
     setReportModalCount(0);
     setReportModalColor('');
     setReportTasks([]);
+  }, []);
+
+  if (loading) {
+    return <DashboardSkeleton />; // Componente de esqueleto para o loading
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-red-800 mb-2">Ocorreu um Erro</h2>
+        <p className="text-red-700 mb-6">{error}</p>
+        <Button onClick={() => fetchDashboardData()} variant="destructive">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Tentar Novamente
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -636,11 +609,11 @@ const statsData = [
           <Button
             variant="ghost"
             size="icon"
-            onClick={handleRefresh}
-            disabled={refreshing}
+            onClick={refreshData}
+            disabled={dataLoading}
             className="hover:bg-muted/50"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${dataLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
@@ -785,49 +758,61 @@ const statsData = [
         </CardContent>
       </Card>
       
-      {/* Modal de relatório */}
-      <Dialog open={showReportModal} onOpenChange={handleCloseReportModal}>
-        <DialogContent className="max-w-3xl">
-          <div className="p-2">
-            <div className="flex items-center gap-4 mb-6">
-               <div className={`w-16 h-16 rounded-full flex items-center justify-center ${reportModalColor}`}>
-                 <span className="text-3xl font-bold text-white">{reportModalCount}</span>
-               </div>
-              <DialogTitle className="text-2xl font-bold">{reportModalTitle}</DialogTitle>
-            </div>
-            
-            {loadingReport ? (
-              <div className="text-center p-8">Carregando tarefas...</div>
-            ) : (
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-4">
-                {reportTasks.length > 0 ? (
-                  reportTasks.map(tarefa => (
-                    <div 
-                      key={tarefa.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-foreground truncate">{tarefa.titulo}</p>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                          <span><MapPin className="h-3 w-3 inline mr-1"/>{tarefa.imovel}</span>
-                          <span><UserCheck className="h-3 w-3 inline mr-1"/>{tarefa.responsavel}</span>
-                          <Badge variant="outline" className={getStatusCor(tarefa.diasRestantes)}>
-                            {tarefa.diasRestantes < 0 
-                              ? `Atrasada ${-tarefa.diasRestantes}d` 
-                              : `Vence em ${tarefa.diasRestantes}d`}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center text-muted-foreground p-8">Nenhuma tarefa encontrada para este critério.</div>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={handleCloseReportModal}
+        title={reportModalTitle}
+        count={reportModalCount}
+        color={reportModalColor}
+        tasks={reportTasks}
+        loading={loadingReport}
+      />
     </div>
   );
 }
+
+// Novo componente de esqueleto
+const DashboardSkeleton = () => (
+  <div className="space-y-6">
+    <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex-1 h-12 bg-muted animate-pulse rounded-lg"></div>
+      <div className="flex-1 h-12 bg-muted animate-pulse rounded-lg"></div>
+    </div>
+    
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {[...Array(4)].map((_, i) => (
+        <Card key={i} className="animate-pulse">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-10 h-10 bg-muted rounded-xl"></div>
+              <div className="w-8 h-4 bg-muted rounded"></div>
+            </div>
+            <div className="h-8 bg-muted rounded"></div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="h-4 bg-muted rounded"></div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+    
+    <Card className="animate-pulse">
+      <CardHeader>
+        <div className="h-6 bg-muted rounded w-32"></div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center gap-3 p-4">
+              <div className="w-3 h-3 bg-muted rounded-full"></div>
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-muted rounded w-3/4"></div>
+                <div className="h-3 bg-muted rounded w-1/2"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+);

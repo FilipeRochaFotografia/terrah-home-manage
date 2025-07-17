@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash2, User2, Calendar, CheckCircle, Clock } from "lucide-react";
+import { Plus, Edit, Trash2, User2, Calendar, CheckCircle, Clock, AlertTriangle, Filter, ChevronDown, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import type { NavigateToTabEvent, FilterTasksByIdEvent } from "@/types/events";
+import { toast } from "sonner";
 
 interface Funcionario {
   id: string;
@@ -20,6 +23,7 @@ interface TarefaAtribuida {
   status: string;
   data_vencimento: string;
   imovel_nome: string;
+  dias_restantes?: number;
 }
 
 export function FuncionariosList() {
@@ -34,7 +38,10 @@ export function FuncionariosList() {
   const [saving, setSaving] = useState(false);
   const [selectedFuncionario, setSelectedFuncionario] = useState<string | null>(null);
   const [tarefasAtribuidas, setTarefasAtribuidas] = useState<TarefaAtribuida[]>([]);
-  const [filtroTarefas, setFiltroTarefas] = useState<'todas' | 'pendentes' | 'concluidas'>('todas');
+  const [loadingTarefas, setLoadingTarefas] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState<'todas' | 'em_aberto' | 'em_andamento' | 'concluida' | 'atrasadas'>('todas');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'todas' | 'hoje' | 'semana' | 'mes'>('todas');
+  const [tarefasVisiveis, setTarefasVisiveis] = useState(5);
 
   // Simulação de permissão de admin (troque por lógica real depois)
   const isAdmin = true;
@@ -45,18 +52,27 @@ export function FuncionariosList() {
 
   async function fetchFuncionarios() {
     setLoading(true);
+    try {
     const { data, error } = await supabase
       .from("funcionarios")
       .select("id, nome, email, telefone, cargo, ativo, user_id")
       .order("nome");
-    if (!error && data) setFuncionarios(data);
+      if (error) throw error;
+      if (data) setFuncionarios(data);
+    } catch (error: any) {
+      console.error("Erro ao buscar funcionários:", error);
+      toast.error("Não foi possível carregar os funcionários.");
+    } finally {
     setLoading(false);
+    }
   }
 
   async function fetchTarefasAtribuidas(funcionario: Funcionario) {
     // Usar user_id do funcionário para buscar tarefas
     const userIdToSearch = funcionario.user_id || funcionario.id;
+    setLoadingTarefas(true);
     
+    try {
     const { data, error } = await supabase
       .from("tarefas")
       .select(`
@@ -69,12 +85,114 @@ export function FuncionariosList() {
       .eq("responsavel_id", userIdToSearch)
       .order("data_vencimento", { ascending: false });
 
-    if (!error && data) {
-      setTarefasAtribuidas(data.map(t => ({
+      if (error) throw error;
+
+      if (data) {
+        const tarefasComDias = data.map(t => ({
         ...t,
-        imovel_nome: (t.imoveis as any).nome
-      })));
+          imovel_nome: (t.imoveis as any).nome,
+          dias_restantes: calcularDiasRestantes(t.data_vencimento)
+        }));
+        setTarefasAtribuidas(tarefasComDias);
+        setTarefasVisiveis(5); // Reset para 5 ao trocar de funcionário
+      }
+    } catch (error: any) {
+      console.error("Erro ao buscar tarefas do funcionário:", error);
+      toast.error("Não foi possível carregar as tarefas deste funcionário.");
+    } finally {
+      setLoadingTarefas(false);
     }
+  }
+
+  function calcularDiasRestantes(dataVencimento: string): number {
+    const hoje = new Date();
+    // Zerar hora para comparar apenas datas
+    hoje.setHours(0, 0, 0, 0);
+    const vencimento = new Date(dataVencimento);
+    vencimento.setHours(0, 0, 0, 0);
+    const diffTime = vencimento.getTime() - hoje.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  }
+
+  function getPrioridadeColor(diasRestantes: number): string {
+    if (diasRestantes < 0) return "border-l-red-500 bg-red-50"; // Atrasada
+    if (diasRestantes <= 5) return "border-l-red-500 bg-red-50"; // Urgente
+    if (diasRestantes <= 14) return "border-l-orange-500 bg-orange-50"; // Atenção
+    if (diasRestantes <= 29) return "border-l-yellow-500 bg-yellow-50"; // Moderado
+    return "border-l-green-500 bg-green-50"; // Normal (apenas > 29 dias)
+  }
+
+  function getPrioridadeLabel(diasRestantes: number): string {
+    if (diasRestantes < 0) return "Urgente";
+    if (diasRestantes === 0) return "Hoje";
+    if (diasRestantes === 1) return "Amanhã";
+    if (diasRestantes <= 5) return "Próximos dias";
+    if (diasRestantes <= 14) return "Atenção";
+    if (diasRestantes <= 29) return "Moderado";
+    return "Normal";
+  }
+
+  function getPrioridadeBadgeColor(diasRestantes: number): string {
+    if (diasRestantes < 0) return "bg-red-100 text-red-800 border-red-200";
+    if (diasRestantes <= 5) return "bg-red-100 text-red-800 border-red-200";
+    if (diasRestantes <= 14) return "bg-orange-100 text-orange-800 border-orange-200";
+    if (diasRestantes <= 29) return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    return "bg-green-100 text-green-800 border-green-200";
+  }
+
+  function filtrarTarefas() {
+    let tarefasFiltradas = tarefasAtribuidas;
+
+    // Filtro por status
+    if (filtroStatus !== 'todas') {
+      if (filtroStatus === 'atrasadas') {
+        tarefasFiltradas = tarefasFiltradas.filter(t => t.dias_restantes && t.dias_restantes < 0);
+      } else {
+        tarefasFiltradas = tarefasFiltradas.filter(t => t.status === filtroStatus);
+      }
+    }
+
+    // Filtro por período
+    if (filtroPeriodo !== 'todas') {
+      const hoje = new Date();
+      const fimSemana = new Date(hoje.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+
+      switch (filtroPeriodo) {
+        case 'hoje':
+          tarefasFiltradas = tarefasFiltradas.filter(t => {
+            const vencimento = new Date(t.data_vencimento);
+            return vencimento.toDateString() === hoje.toDateString();
+          });
+          break;
+        case 'semana':
+          tarefasFiltradas = tarefasFiltradas.filter(t => {
+            const vencimento = new Date(t.data_vencimento);
+            return vencimento <= fimSemana && vencimento >= hoje;
+          });
+          break;
+        case 'mes':
+          tarefasFiltradas = tarefasFiltradas.filter(t => {
+            const vencimento = new Date(t.data_vencimento);
+            return vencimento <= fimMes && vencimento >= hoje;
+          });
+          break;
+      }
+    }
+
+    // Ordenar da mais atrasada para a menos atrasada
+    tarefasFiltradas = tarefasFiltradas.slice().sort((a, b) => (a.dias_restantes ?? 9999) - (b.dias_restantes ?? 9999));
+
+    return tarefasFiltradas;
+  }
+
+  const tarefasFiltradas = filtrarTarefas();
+  const tarefasParaMostrar = tarefasFiltradas.slice(0, tarefasVisiveis);
+  const temMaisTarefas = tarefasFiltradas.length > tarefasVisiveis;
+
+  function mostrarMaisTarefas() {
+    setTarefasVisiveis(prev => prev + 5);
   }
 
   function openForm(funcionario?: Funcionario) {
@@ -98,6 +216,8 @@ export function FuncionariosList() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    
+    try {
     const funcionarioData = {
       nome,
       email,
@@ -105,33 +225,75 @@ export function FuncionariosList() {
       cargo: cargo || null
     };
     
+      let error;
     if (editFuncionario) {
-      await supabase.from("funcionarios").update(funcionarioData).eq("id", editFuncionario.id);
+        ({ error } = await supabase.from("funcionarios").update(funcionarioData).eq("id", editFuncionario.id));
     } else {
-      await supabase.from("funcionarios").insert(funcionarioData);
+        ({ error } = await supabase.from("funcionarios").insert(funcionarioData));
     }
-    setSaving(false);
+      
+      if (error) throw error;
+      
+      toast.success(`Funcionário ${editFuncionario ? 'atualizado' : 'criado'} com sucesso!`);
     closeForm();
     fetchFuncionarios();
+      
+    } catch (error: any) {
+      console.error("Erro ao salvar funcionário:", error);
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleDelete(id: string) {
-    if (window.confirm("Tem certeza que deseja remover este funcionário?")) {
-      await supabase.from("funcionarios").delete().eq("id", id);
+    // Usando toast para confirmação em vez de window.confirm
+    toast.warning("Tem certeza que deseja remover este funcionário?", {
+      action: {
+        label: "Confirmar",
+        onClick: async () => {
+          try {
+            const { error } = await supabase.from("funcionarios").delete().eq("id", id);
+            if (error) throw error;
+            toast.success("Funcionário removido com sucesso!");
       fetchFuncionarios();
-    }
+          } catch (error: any) {
+            console.error("Erro ao remover funcionário:", error);
+            toast.error(`Erro ao remover: ${error.message}`);
+          }
+        },
+      },
+      cancel: {
+        label: "Cancelar",
+        onClick: () => {},
+      },
+      duration: 5000,
+    });
   }
 
   function handleFuncionarioClick(funcionario: Funcionario) {
     if (selectedFuncionario === funcionario.id) {
       setSelectedFuncionario(null);
       setTarefasAtribuidas([]);
-      setFiltroTarefas('todas');
+      setFiltroStatus('todas');
+      setFiltroPeriodo('todas');
     } else {
       setSelectedFuncionario(funcionario.id);
-      setFiltroTarefas('todas');
+      setFiltroStatus('todas');
+      setFiltroPeriodo('todas');
       fetchTarefasAtribuidas(funcionario);
     }
+  }
+
+  function handleTarefaClick(tarefaId: string) {
+    // Primeiro navegar para a aba de tarefas
+    const navEvent: NavigateToTabEvent = new CustomEvent('navigateToTab', { detail: 'tasks' });
+    window.dispatchEvent(navEvent);
+    // Depois de um pequeno delay, disparar o filtro para a tarefa específica
+    setTimeout(() => {
+      const filterEvent: FilterTasksByIdEvent = new CustomEvent('filterTasksById', { detail: tarefaId });
+      window.dispatchEvent(filterEvent);
+    }, 100);
   }
 
   function getStatusColor(status: string) {
@@ -183,7 +345,19 @@ export function FuncionariosList() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando funcionários...</div>
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-muted rounded-full animate-pulse"></div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
+                  <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : (
         <div className="space-y-4">
           {funcionarios.map((funcionario) => (
@@ -207,7 +381,7 @@ export function FuncionariosList() {
                     </div>
                   </div>
                   {isAdmin && (
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openForm(funcionario); }} title="Editar">
                         <Edit className="h-5 w-5" />
                       </Button>
@@ -225,119 +399,139 @@ export function FuncionariosList() {
                 </CardContent>
               </Card>
 
-              {/* Tarefas atribuídas */}
+              {/* Tarefas Atribuídas */}
               {selectedFuncionario === funcionario.id && (
-                <div className="mt-4 ml-4 space-y-4">
-                  <h4 className="text-lg font-semibold text-terrah-turquoise flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
+                <div className="ml-6 mt-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-terrah-turquoise" />
+                    <h4 className="font-semibold text-terrah-turquoise flex items-center gap-2">
                     Tarefas Atribuídas ({tarefasAtribuidas.length})
                   </h4>
-                  
-                  {tarefasAtribuidas.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground bg-muted/30 rounded-lg">
-                      <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma tarefa atribuída</p>
+                  </div>
+
+                  {loadingTarefas ? (
+                    <div className="space-y-2">
+                      {[...Array(2)].map((_, i) => (
+                        <Card key={i} className="p-4 bg-muted/30 animate-pulse">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-2">
+                              <div className="h-4 bg-muted rounded w-40"></div>
+                              <div className="h-3 bg-muted rounded w-24"></div>
+                            </div>
+                            <div className="h-6 w-16 bg-muted rounded-full"></div>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {/* Botões Pendentes e Concluídas */}
-                      <div className="flex gap-2">
-                        <button 
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            filtroTarefas === 'todas'
-                              ? 'bg-terrah-turquoise text-white' 
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                          onClick={() => setFiltroTarefas('todas')}
-                        >
-                          Todas ({tarefasAtribuidas.length})
-                        </button>
-                        <button 
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            filtroTarefas === 'pendentes'
-                              ? 'bg-terrah-orange text-white'
-                              : tarefasAtribuidas.filter(t => t.status === 'em_aberto').length === 0 
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                                : 'bg-terrah-orange/10 text-terrah-orange hover:bg-terrah-orange/20'
-                          }`}
-                          disabled={tarefasAtribuidas.filter(t => t.status === 'em_aberto').length === 0}
-                          onClick={() => setFiltroTarefas('pendentes')}
-                        >
-                          <Clock className="h-4 w-4 inline mr-1" />
-                          {tarefasAtribuidas.filter(t => t.status === 'em_aberto').length}
-                        </button>
-                        <button 
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            filtroTarefas === 'concluidas'
-                              ? 'bg-success text-white'
-                              : tarefasAtribuidas.filter(t => t.status === 'concluida').length === 0 
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                                : 'bg-success/10 text-success hover:bg-success/20'
-                          }`}
-                          disabled={tarefasAtribuidas.filter(t => t.status === 'concluida').length === 0}
-                          onClick={() => setFiltroTarefas('concluidas')}
-                        >
-                          <CheckCircle className="h-4 w-4 inline mr-1" />
-                          {tarefasAtribuidas.filter(t => t.status === 'concluida').length}
-                        </button>
+                    <>
+                      {/* Filtros */}
+                      <div className="space-y-3">
+                        {/* Filtro por Status */}
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                            <Filter className="h-4 w-4" />
+                          </span>
+                          {[
+                            { key: 'todas', label: 'Todas', count: tarefasAtribuidas.length },
+                            { key: 'em_aberto', label: 'Em Aberto', count: tarefasAtribuidas.filter(t => t.status === 'em_aberto').length },
+                            { key: 'em_andamento', label: 'Em Andamento', count: tarefasAtribuidas.filter(t => t.status === 'em_andamento').length },
+                            { key: 'concluida', label: 'Concluídas', count: tarefasAtribuidas.filter(t => t.status === 'concluida').length },
+                            { key: 'atrasadas', label: 'Atrasadas', count: tarefasAtribuidas.filter(t => t.dias_restantes && t.dias_restantes < 0).length }
+                          ].map(({ key, label, count }) => (
+                            <Button
+                              key={key}
+                              variant={filtroStatus === key ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setFiltroStatus(key as any)}
+                              className={filtroStatus === key ? "bg-terrah-turquoise hover:bg-terrah-turquoise/90" : ""}
+                            >
+                              {label} ({count})
+                            </Button>
+                          ))}
+                        </div>
+
+                        {/* Filtro por Período */}
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-sm font-medium text-muted-foreground">Período:</span>
+                          {[
+                            { key: 'todas', label: 'Todas' },
+                            { key: 'hoje', label: 'Hoje' },
+                            { key: 'semana', label: 'Esta Semana' },
+                            { key: 'mes', label: 'Este Mês' }
+                          ].map(({ key, label }) => (
+                            <Button
+                              key={key}
+                              variant={filtroPeriodo === key ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setFiltroPeriodo(key as any)}
+                              className={filtroPeriodo === key ? "bg-terrah-turquoise hover:bg-terrah-turquoise/90" : ""}
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
                       </div>
 
-                      {/* Micro Cards das Tarefas */}
-                      <div>
-                        {(() => {
-                          const tarefasFiltradas = tarefasAtribuidas.filter(tarefa => {
-                            if (filtroTarefas === 'pendentes') return tarefa.status === 'em_aberto';
-                            if (filtroTarefas === 'concluidas') return tarefa.status === 'concluida';
-                            return true; // 'todas'
-                          });
-                          
-                          if (tarefasFiltradas.length === 0) {
-                            return (
-                              <div className="text-center py-4 text-muted-foreground bg-muted/20 rounded-lg">
-                                <Clock className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                                <p className="text-sm">
-                                  {filtroTarefas === 'pendentes' ? 'Nenhuma tarefa pendente' : 
-                                   filtroTarefas === 'concluidas' ? 'Nenhuma tarefa concluída' : 
-                                   'Nenhuma tarefa encontrada'}
-                                </p>
+                      {/* Lista de Tarefas */}
+                      <div className="space-y-2">
+                        {tarefasFiltradas.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
+                            <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p>Nenhuma tarefa encontrada com os filtros selecionados.</p>
                               </div>
-                            );
-                          }
-                          
-                          return (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {tarefasFiltradas.map((tarefa) => (
-                                <div 
+                        ) : (
+                          <>
+                            {tarefasParaMostrar.map((tarefa) => (
+                              <Card
                                   key={tarefa.id} 
-                                  className="bg-muted/30 rounded-lg p-3 hover:bg-muted/50 transition-all cursor-pointer border-l-2 border-l-terrah-turquoise/20 hover:border-l-terrah-turquoise"
-                                  onClick={() => {
-                                    // Navegar para aba de tarefas e filtrar por esta tarefa específica
-                                    window.dispatchEvent(new CustomEvent('navigateToTab', { detail: 'tasks' }));
-                                    setTimeout(() => {
-                                      window.dispatchEvent(new CustomEvent('clearColorFilter'));
-                                      window.dispatchEvent(new CustomEvent('filterTasksById', { detail: tarefa.id }));
-                                    }, 100);
-                                  }}
-                                >
-                                  <div className="flex items-start justify-between">
+                                className={`${getPrioridadeColor(tarefa.dias_restantes || 0)} hover:shadow-md transition-all duration-200 cursor-pointer hover:scale-[1.02]`}
+                                onClick={() => handleTarefaClick(tarefa.id)}
+                              >
+                                <CardContent className="p-4">
+                                  <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-sm truncate">{tarefa.titulo}</p>
-                                      <p className="text-xs text-muted-foreground truncate">{tarefa.imovel_nome}</p>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {new Date(tarefa.data_vencimento).toLocaleDateString("pt-BR")}
+                                      <h5 className="font-medium text-base leading-tight mb-1 break-words text-foreground">
+                                        {tarefa.titulo}
+                                      </h5>
+                                      <p className="text-sm text-muted-foreground mb-1">
+                                        {tarefa.imovel_nome}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Vence em: {new Date(tarefa.data_vencimento).toLocaleDateString("pt-BR")}
                                       </p>
                           </div>
-                                    <div className={`${getStatusColor(tarefa.status)} border-0 font-medium inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ml-2`}>
+                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                      <Badge className={getPrioridadeBadgeColor(tarefa.dias_restantes || 0)}>
+                                        {getPrioridadeLabel(tarefa.dias_restantes || 0)}
+                                        {typeof tarefa.dias_restantes === 'number' && ` (${tarefa.dias_restantes} dias)`}
+                                      </Badge>
+                                      <Badge className={getStatusColor(tarefa.status)}>
                               {getStatusLabel(tarefa.status)}
+                                      </Badge>
                             </div>
                           </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                            
+                            {/* Botão Mostrar Mais */}
+                            {temMaisTarefas && (
+                              <div className="text-center pt-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={mostrarMaisTarefas}
+                                  className="text-terrah-turquoise border-terrah-turquoise hover:bg-terrah-turquoise hover:text-white"
+                                >
+                                  <ChevronDown className="h-4 w-4 mr-2" />
+                                  Mostrar mais ({tarefasFiltradas.length - tarefasVisiveis} restantes)
+                                </Button>
+                              </div>
+                            )}
+                          </>
+                        )}
                         </div>
-                      ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
+                    </>
                   )}
                 </div>
               )}
@@ -349,39 +543,54 @@ export function FuncionariosList() {
       {/* Modal para cadastro/edição */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <form onSubmit={handleSave} className="bg-white rounded-xl shadow-xl p-8 w-full max-w-sm flex flex-col gap-4">
+          <form onSubmit={handleSave} className="bg-white rounded-xl shadow-xl p-4 sm:p-8 w-full max-w-sm sm:max-w-md flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold mb-2">{editFuncionario ? "Editar Funcionário" : "Novo Funcionário"}</h3>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nome</label>
             <input
-              className="border rounded px-3 py-2"
-              placeholder="Nome completo"
+                className="border rounded px-3 py-2 w-full"
               value={nome}
               onChange={e => setNome(e.target.value)}
               required
-              autoFocus
             />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Email</label>
             <input
-              className="border rounded px-3 py-2"
+                className="border rounded px-3 py-2 w-full"
               type="email"
-              placeholder="E-mail"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
             />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Telefone</label>
             <input
-              className="border rounded px-3 py-2"
-              placeholder="Telefone (opcional)"
+                className="border rounded px-3 py-2 w-full"
               value={telefone}
               onChange={e => setTelefone(e.target.value)}
             />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cargo</label>
             <input
-              className="border rounded px-3 py-2"
-              placeholder="Cargo (opcional)"
+                className="border rounded px-3 py-2 w-full"
               value={cargo}
               onChange={e => setCargo(e.target.value)}
             />
-            <div className="flex gap-2 mt-2">
-              <Button type="submit" className="flex-1" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
-              <Button type="button" variant="outline" className="flex-1" onClick={closeForm}>Cancelar</Button>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <Button type="button" variant="ghost" onClick={closeForm}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saving ? "Salvando..." : "Salvar"}
+              </Button>
             </div>
           </form>
         </div>

@@ -1,4 +1,4 @@
-import { Home, CheckSquare, Building2, Users } from "lucide-react";
+import { Home, CheckSquare, Building2, Users, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface BottomNavProps {
@@ -10,7 +10,8 @@ const navItems = [
   { id: "dashboard", label: "Início", icon: Home },
   { id: "tasks", label: "Tarefas", icon: CheckSquare },
   { id: "properties", label: "Imóveis", icon: Building2 },
-  { id: "employees", label: "Funcionários", icon: Users }
+  { id: "employees", label: "Funcionários", icon: Users },
+  { id: "reports", label: "Relatórios", icon: BarChart3 }
 ];
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {

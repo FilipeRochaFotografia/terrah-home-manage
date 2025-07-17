@@ -38,6 +38,8 @@ const AlertDialogContent = React.forwardRef<
         className
       )}
       {...props}
+      // Adicionado para acessibilidade
+      aria-describedby={props.children ? "alert-dialog-description" : undefined}
     />
   </AlertDialogPortal>
 ))
@@ -89,6 +91,7 @@ const AlertDialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
     ref={ref}
+    id="alert-dialog-description" // Adicionado id para vincular
     className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />

@@ -22,16 +22,11 @@ interface NotificationParams {
  */
 export async function sendPushNotification(params: NotificationParams) {
   try {
-    console.log('=== sendPushNotification (v2) ===');
-    console.log('Invocando a edge function com os parâmetros:', params);
-
     // A lógica de buscar o token FCM foi movida para a Edge Function por segurança.
     // O cliente apenas invoca a função com os dados necessários.
     const { data, error } = await supabase.functions.invoke('send-notification', {
       body: params
     });
-
-    console.log('Resposta do Supabase:', { data, error });
 
     if (error) {
       console.error('Erro ao invocar a edge function "send-notification":', error);
@@ -39,7 +34,6 @@ export async function sendPushNotification(params: NotificationParams) {
       return { success: false, error: error.message };
     }
 
-    console.log('Edge function "send-notification" invocada com sucesso:', data);
     return { success: true, data };
 
   } catch (error) {
@@ -52,11 +46,6 @@ export async function sendPushNotification(params: NotificationParams) {
  * Envia notificação quando uma tarefa é atribuída a um funcionário
  */
 export async function notifyTaskAssigned(userId: string, taskId: string, taskTitle: string) {
-  console.log('=== notifyTaskAssigned ===');
-  console.log('userId:', userId);
-  console.log('taskId:', taskId);
-  console.log('taskTitle:', taskTitle);
-  
   return sendPushNotification({
     type: 'task_assigned',
     userId,
