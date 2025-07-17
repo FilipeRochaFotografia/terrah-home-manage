@@ -1,6 +1,17 @@
-# DECISÕES TÉCNICAS – Terrah Homes | Tarefas Programadas
+# DECISOES TÉCNICAS – Terrah Homes | Tarefas Programadas
 
-## Última Atualização - Dezembro 2024
+## Última Atualização - 18/07/2025
+
+### **Decisão: Refinamento da Interface e Experiência do Usuário (Julho 2025)**
+- **Contexto**: Após estabilização do app, foi realizada uma rodada de refinamento da UI/UX para melhorar a clareza e consistência.
+- **Problema**: Informações redundantes e inconsistências visuais estavam poluindo a interface.
+- **Soluções Implementadas**:
+  - **Unificação do Card de Relatórios**: Substituição de quatro cards individuais por um único card informativo no Dashboard, simplificando a UI e direcionando o usuário para a aba de Relatórios com um único clique.
+  - **Remoção de Redundância Visual**: Eliminação de badges de período ("Hoje") e contadores de tarefas que já estavam implícitos no contexto, resultando em uma interface mais limpa.
+  - **Melhora de Contraste e Hierarquia**: Ajuste na sombra e no gradiente de fundo da tela de Login para destacar o formulário e melhorar a legibilidade.
+  - **Consistência Visual no PWA**: Correção da `theme-color` no `index.html` para branco (`#FFFFFF`), garantindo que a cor de fundo no "overscroll" em dispositivos móveis seja consistente com o resto da aplicação.
+- **Motivação**: Aumentar a usabilidade, reduzir a carga cognitiva do usuário e garantir uma identidade visual coesa e profissional em toda a plataforma.
+
 
 ### **Decisão: Sistema de Relatórios Funcionais (IMPLEMENTADO ✅)**
 - Modais de relatório transformados de estáticos para dinâmicos

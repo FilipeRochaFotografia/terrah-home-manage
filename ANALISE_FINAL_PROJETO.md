@@ -73,6 +73,19 @@ As próximas etapas pós-deploy são focadas em otimizações de performance (se
 - **Lógica de Autenticação Centralizada**: `AuthContext` e `useAuth` criados.
 - **Funções Utilitárias Simplificadas**: `utils.ts` refatorado.
 
+### ✅ **Fase de Refinamento e Deploy (18/07/2025)**
+- **Resolução de Problemas de Deploy**:
+  - Corrigido o erro **404 Not Found** na Vercel através da criação do arquivo `vercel.json` com a regra de rewrite para SPAs.
+  - Resolvido o problema de permissão de `git push` devido a múltiplas contas do GitHub configuradas localmente.
+- **Estabilização do Ambiente de Desenvolvimento**:
+  - Corrigido o erro `Uncaught SyntaxError` que impedia a aplicação de rodar localmente, causado por um cache do Vite que foi limpo ao reiniciar o servidor.
+- **Refinamento da Interface do Usuário (UI/UX)**:
+  - **Dashboard**: O card de relatórios foi unificado para simplificar a interface e melhorar a navegação. Elementos visuais redundantes, como badges de período, foram removidos.
+  - **Tela de Login**: O contraste foi aprimorado para destacar o formulário do fundo.
+  - **PWA (Progressive Web App)**: A `theme-color` foi ajustada para branco, garantindo consistência visual ao rolar a tela em dispositivos móveis.
+  - **Consistência Geral**: Vários pequenos ajustes de texto e layout foram feitos para polir a experiência final do usuário.
+
+
 ### 🎯 **Próximos Passos (Pós-Deploy)**
 1. **Otimizar performance (se necessário)**: Avaliar a necessidade de React Query, memoização e lazy loading após testes em produção.
 2. **Implementar Testes automatizados**: Adicionar Jest/Testing Library para garantir a estabilidade do código.

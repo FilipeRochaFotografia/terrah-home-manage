@@ -46,6 +46,11 @@
 - [x] Implementar notificações push (funcional em ambiente de dev)
 - [x] Resolver conflitos de dependências nas Edge Functions
 - [x] Correção de Bug Crítico (Tela Branca no Dashboard)
+- [x] Refinamento da UI (remoção de badges e contadores redundantes)
+- [x] Melhoria de Contraste e Sombra na Tela de Login
+- [x] Unificação do Card de Relatórios no Dashboard para Melhor UX
+- [x] Consistência Visual do PWA (correção da `theme-color` no overscroll)
+
 
 ## Próximos Passos (Pós-Deploy)
 - [ ] Implementar sincronização offline (IndexedDB/localStorage)

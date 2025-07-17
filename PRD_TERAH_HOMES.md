@@ -35,6 +35,7 @@ O projeto surgiu da necessidade de automatizar e controlar tarefas recorrentes e
 ### **Dashboard Interativo**
 - Visão geral com estatísticas em tempo real
 - Cards clicáveis com navegação automática para filtros específicos
+- **Card de Relatórios unificado e informativo**, com navegação direta para a aba de relatórios
 - Integração fluida com lista de tarefas
 - Notificações com badge dinâmico
 - Layout responsivo otimizado
@@ -70,6 +71,8 @@ O projeto surgiu da necessidade de automatizar e controlar tarefas recorrentes e
 
 ### **Interface Mobile-First**
 - Design responsivo otimizado para dispositivos móveis
+- **Ajuste de contraste e sombra na tela de login** para melhor legibilidade
+- **Correção da `theme-color` para consistência visual no PWA** (fundo branco no overscroll)
 - Navegação inferior (bottom nav) intuitiva
 - Modais com padding lateral no mobile
 - Cards e componentes touch-friendly
@@ -173,9 +176,10 @@ O projeto surgiu da necessidade de automatizar e controlar tarefas recorrentes e
 
 ### **Usabilidade**
 - ✅ Interface intuitiva e consistente
+- ✅ **UI refinada para remover informações redundantes** (ex: badges de período, contadores)
 - ✅ Feedback visual em todas as ações
 - ✅ Navegação clara e objetiva
-- ✅ Estados de loading e erro bem definidos
+- ✅ **Estados de loading e erro bem definidos e robustos**, tratando casos de inatividade do backend
 
 ### **Responsividade**
 - ✅ Suporte completo a dispositivos móveis
