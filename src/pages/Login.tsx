@@ -23,8 +23,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-white px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center animate-in fade-in duration-500">
+    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-terrah-turquoise/20 to-terrah-orange/20 px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center animate-in fade-in duration-500">
         <img src="/lovable-uploads/logo.png" alt="Logo Terrah Homes" className="h-16 mb-4" />
         <h1 className="text-2xl font-bold text-terrah-orange mb-1">Terrah Homes</h1>
         <p className="text-md text-muted-foreground">Aluguel de Temporada</p>
